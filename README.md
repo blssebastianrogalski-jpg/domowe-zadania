@@ -12,3 +12,9 @@ Push działa na iOS 16.4+ tylko po dodaniu aplikacji do ekranu początkowego (Sa
 
 ## Ustawienia w Supabase
 - Authentication → Sign In / Providers → włącz **Allow anonymous sign-ins**.
+
+## Dziennik eduVULCAN (eksperymentalne)
+- Funkcja `supabase/functions/dz-dziennik` (3× dziennie przez `pg_cron`, migracja `003_dz_dziennik.sql`) pobiera zadania domowe i sprawdziany na 14 dni i zakłada z nich jednorazowe karty dziecka.
+- Rodzic łączy dziennik w widoku „Dla rodzica”, wklejając dane ze strony `eduvulcan.pl/api/ap`. Hasło nie trafia na serwer: funkcja rejestruje się w eduVULCAN jako kolejny telefon (klucz RSA w tabeli `dz_school_links`, dostęp tylko dla roli serwisowej).
+- To nieoficjalne API aplikacji mobilnej (za iris, dampud/vulcan, hebece). Może przestać działać po zmianach VULCAN; błąd widać w panelu rodzica.
+- Funkcje `dz-reminders` i `dz-dziennik` wdrażane z wyłączoną weryfikacją JWT (same sprawdzają sekret crona albo zalogowanego rodzica).

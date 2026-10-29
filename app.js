@@ -3,7 +3,7 @@ import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 const CFG = window.DZ_CONFIG;
 const sb = createClient(CFG.supabaseUrl, CFG.supabaseAnonKey, { auth: { persistSession: true, autoRefreshToken: true } });
 const $ = (id) => document.getElementById(id);
-const S = { uid: null, device: null, family: null, members: [], tasks: [], tally: {}, me: null, isParent: false };
+const S = { uid: null, device: null, family: null, members: [], tasks: [], tally: {}, me: null, isParent: false, school: null };
 
 // ---------- small helpers ----------
 const pad = (n) => String(n).padStart(2, "0");
@@ -15,7 +15,21 @@ const dueMs = (t) => { if (!t.due) return null; const [h, m] = t5(t.due).split("
 function st(t) { if (t.repeat === "daily" && t.status_day !== today()) return "todo"; return t.status || "todo"; }
 const LABEL = { todo: "Do zrobienia", snoozed: "Do zrobienia", doing: "W trakcie", help: "Potrzebuje pomocy", done: "Zrobione" };
 const CLS = { todo: "s-todo", snoozed: "s-todo", doing: "s-doing", help: "s-help", done: "s-done" };
-const visible = (t) => t.repeat === "daily" || st(t) !== "done" || t.status_day === today();
+const addDays = (day, n) => { const d = new Date(day + "T12:00:00"); d.setDate(d.getDate() + n); return dayOf(d); };
+// Cards from the school dziennik carry a date: the parent sees them until that day, the child from 3 days before
+function visible(t, forChild = false) {
+  if (t.due_date && t.due_date < today()) return false;
+  if (forChild && t.due_date && today() < addDays(t.due_date, -3)) return false;
+  return t.repeat === "daily" || st(t) !== "done" || t.status_day === today();
+}
+const WD = ["niedziela", "poniedziałek", "wtorek", "środa", "czwartek", "piątek", "sobota"];
+function dayLabel(day) {
+  if (day === today()) return "dziś";
+  if (day === addDays(today(), 1)) return "jutro";
+  const d = new Date(day + "T12:00:00");
+  return WD[d.getDay()] + " " + pad(d.getDate()) + "." + pad(d.getMonth() + 1);
+}
+const sortKey = (t) => (t.due_date || today()) + (t5(t.due) || "99");
 const memberName = (id) => (S.members.find((m) => m.id === id) || {}).name || "Ktoś";
 
 function toast(msg) { const el = $("toast"); el.textContent = msg; el.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(() => (el.hidden = true), 4500); }
@@ -123,13 +137,13 @@ function renderPick() {
 
 // ---------- executor ----------
 function renderMoje() {
-  const mine = S.tasks.filter((t) => t.member_id === S.me.id && visible(t));
+  const mine = S.tasks.filter((t) => t.member_id === S.me.id && visible(t, true));
   const now = Date.now();
   const snoozeAt = (t) => (t.snooze_until ? Date.parse(t.snooze_until) : 0);
   const due = mine.filter((t) => st(t) === "snoozed" && snoozeAt(t) <= now);
   const active = mine.filter((t) => ["doing", "help"].includes(st(t)))
     .concat(due)
-    .concat(mine.filter((t) => st(t) === "todo").sort((a, b) => (t5(a.due) || "99").localeCompare(t5(b.due) || "99")));
+    .concat(mine.filter((t) => st(t) === "todo").sort((a, b) => sortKey(a).localeCompare(sortKey(b))));
   const later = mine.filter((t) => st(t) === "snoozed" && snoozeAt(t) > now).sort((a, b) => snoozeAt(a) - snoozeAt(b));
   const done = mine.filter((t) => st(t) === "done");
 
@@ -156,6 +170,8 @@ function focusCard(t, more) {
   card.append(el("div", {}, el("span", { class: "pill " + CLS[s] }, s === "snoozed" ? "Wróciło przypomnienie" : LABEL[s])));
   card.append(el("div", { class: "title" }, t.title));
   if (t.due) card.append(el("div", { class: "when" }, "Termin: przed " + t5(t.due)));
+  if (t.due_date) card.append(el("div", { class: "when" }, (t.title.startsWith("Zadanie domowe") ? "Na " : "Kiedy: ") + dayLabel(t.due_date) + (t.source === "eduvulcan" ? " · z dziennika" : "")));
+  if (t.details) card.append(el("div", { class: "details" }, t.details));
   if (dm && dm - now <= 15 * 60000 && dm > now) card.append(el("div", { class: "soon" }, "Zostało " + Math.max(1, Math.round((dm - now) / 60000)) + " min. Robisz teraz czy potrzebujesz pomocy?"));
   const steps = Array.isArray(t.steps) ? t.steps : [];
   if (steps.length) {
@@ -207,14 +223,14 @@ function renderRodzic() {
   const board = $("board"); board.replaceChildren();
   const doers = S.members;
   for (const m of doers) {
-    const ts = S.tasks.filter((t) => t.member_id === m.id && visible(t)).sort((a, b) => (t5(a.due) || "99").localeCompare(t5(b.due) || "99"));
+    const ts = S.tasks.filter((t) => t.member_id === m.id && visible(t)).sort((a, b) => sortKey(a).localeCompare(sortKey(b)));
     if (!ts.length && m.role === "parent") continue;
     const ul = el("ul", { class: "rows" });
     if (!ts.length) ul.append(el("li", { class: "empty" }, "Brak zadań."));
     for (const t of ts) {
       const s = st(t);
       ul.append(el("li", { class: "row" },
-        el("div", { class: "t" }, el("div", {}, t.title), el("div", { class: "meta" }, [t.remind_at ? "przypomnienie " + t5(t.remind_at) : null, t.due ? "przed " + t5(t.due) : null, t.repeat === "daily" ? "codziennie" : "jednorazowo"].filter(Boolean).join(" · "))),
+        el("div", { class: "t" }, el("div", {}, t.title), el("div", { class: "meta" }, [t.due_date ? dayLabel(t.due_date) : null, t.remind_at ? "przypomnienie " + t5(t.remind_at) : null, t.due ? "przed " + t5(t.due) : null, t.source === "eduvulcan" ? "z dziennika" : t.repeat === "daily" ? "codziennie" : "jednorazowo"].filter(Boolean).join(" · "))),
         el("span", { class: "pill " + CLS[s] }, LABEL[s]),
         el("div", { class: "acts" }, el("button", { class: "ghost", "aria-label": "Usuń zadanie " + t.title, onclick: () => removeTask(t) }, "Usuń"))));
     }
@@ -233,6 +249,75 @@ function renderRodzic() {
     sel.append(el("option", { value: m.id }, m.name));
   }
   if (keep) sel.value = keep; else { const firstChild = S.members.find((m) => m.role === "child"); if (firstChild) sel.value = firstChild.id; }
+  renderSchool();
+}
+
+// ---------- school dziennik (eduVULCAN) ----------
+async function dziennik(action, extra = {}) {
+  const { data, error } = await sb.functions.invoke("dz-dziennik", { body: { action, ...extra } });
+  if (error) {
+    let msg = errMsg(error);
+    try { const j = await error.context.json(); if (j?.error) msg = j.error; } catch {}
+    throw new Error(msg);
+  }
+  return data;
+}
+let schoolBusy = false;
+async function schoolDo(action, extra, okMsg) {
+  if (schoolBusy) return;
+  schoolBusy = true; renderSchool();
+  try {
+    S.school = await dziennik(action, extra);
+    await loadAll();
+    const r = S.school.result;
+    if (S.school.last_error) toast(S.school.last_error);
+    else if (okMsg) toast(okMsg + (r ? " Nowe karty: " + r.added + "." : ""));
+  } catch (e) { toast(errMsg(e)); }
+  schoolBusy = false; render();
+}
+let schoolAsked = false;
+function renderSchool() {
+  const box = $("school");
+  if (!S.school) {
+    if (!schoolAsked) { schoolAsked = true; dziennik("status").then((d) => { S.school = d; render(); }).catch((e) => { box.replaceChildren(el("p", { class: "err" }, "Nie mogę sprawdzić połączenia z dziennikiem: " + errMsg(e))); }); }
+    return;
+  }
+  box.replaceChildren();
+  if (schoolBusy) { box.append(el("p", { class: "muted small" }, "Łączę się z eduVULCAN…")); return; }
+  if (!S.school.linked) {
+    box.append(
+      el("p", { class: "muted small" }, "Zadania domowe i sprawdziany z najbliższych 2 tygodni same pojawią się jako karty dziecka. Dziecko widzi kartę 3 dni wcześniej, przypomnienie o 16:00 przychodzi przez 2 dni przed terminem. Nie podajesz hasła: aplikacja dopisuje się w eduVULCAN jako kolejny telefon."),
+      el("ol", {},
+        el("li", {}, "Najprościej na komputerze: otwórz tę aplikację w przeglądarce, dołącz kodem rodziny i wybierz siebie."),
+        el("li", {}, "W drugiej karcie zaloguj się na eduvulcan.pl kontem rodzica."),
+        el("li", {}, "W tej samej karcie wejdź na ", el("code", {}, "eduvulcan.pl/api/ap"), "."),
+        el("li", {}, "Naciśnij Ctrl+U (źródło strony), potem Ctrl+A i Ctrl+C."),
+        el("li", {}, "Wróć tutaj, wklej poniżej (Ctrl+V) i stuknij „Połącz”. Zrób to od razu, te dane ważne są krótko.")),
+      el("p", { class: "muted small" }, "Na Androidzie w Chrome możesz też wpisać w pasek adresu ", el("code", {}, "view-source:https://eduvulcan.pl/api/ap"), ", zaznaczyć wszystko i skopiować."));
+    // Kept across re-renders so a live refresh does not wipe the pasted text
+    const ta = (renderSchool.ta ??= el("textarea", { rows: "3", placeholder: "Wklej tu skopiowaną stronę", "aria-label": "Dane z eduvulcan.pl/api/ap", spellcheck: "false" }));
+    box.append(ta, el("div", { class: "acts" }, el("button", { class: "primary", onclick: () => {
+      if (!ta.value.trim()) { ta.focus(); return; }
+      const ap = ta.value; ta.value = "";
+      schoolDo("link", { ap }, "Dziennik połączony.");
+    } }, "Połącz")));
+    return;
+  }
+  const accs = S.school.accounts || [];
+  for (const a of accs) {
+    const sel = el("select", { "aria-label": "Czyje karty dla: " + a.name });
+    sel.append(el("option", { value: "" }, "— nie pobieraj —"));
+    for (const m of S.members) sel.append(el("option", { value: m.id }, m.name));
+    sel.value = a.member_id || "";
+    sel.onchange = () => schoolDo("map", { pupil_id: a.pupil_id, member_id: sel.value || null }, sel.value ? "Karty trafią do: " + memberName(sel.value) + "." : "Nie pobieram już dla: " + a.name + ".");
+    box.append(el("label", {}, a.name + (a.class ? " · klasa " + a.class : "") + " → karty dla", sel));
+  }
+  if (accs.length && !accs.some((a) => a.member_id)) box.append(el("p", { class: "note" }, "Wybierz, komu dawać karty, wtedy zacznę pobierać."));
+  if (S.school.last_error) box.append(el("p", { class: "err" }, S.school.last_error));
+  box.append(el("p", { class: "muted small" }, S.school.last_sync_at ? "Ostatnio pobrane: " + dayLabel(dayOf(new Date(S.school.last_sync_at))) + " " + hm(Date.parse(S.school.last_sync_at)) + ". Pobieram sam 3 razy dziennie." : "Jeszcze nic nie pobrano."));
+  box.append(el("div", { class: "acts" },
+    el("button", { class: "primary", onclick: () => schoolDo("sync", {}, "Pobrane.") }, "Pobierz teraz"),
+    el("button", { class: "ghost", onclick: () => { if (confirmTwice("school-unlink", "Stuknij „Odłącz” jeszcze raz. Usunę też niezrobione karty z dziennika.")) schoolDo("unlink", {}, "Dziennik odłączony."); } }, "Odłącz dziennik")));
 }
 
 const pending = new Set();
