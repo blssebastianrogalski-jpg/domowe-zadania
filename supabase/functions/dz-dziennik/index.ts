@@ -17,7 +17,9 @@ const APP = { name: "DzienniczekPlus 3.0", version: "25.09.24 (G)", code: "802",
 const DEVICE = { os: "Android", model: "SM-A525F" };
 const TZ = "Europe/Warsaw";
 const DAYS_AHEAD = 14;
-const REMIND_AT = "16:00";
+const REMIND_AT = "16:00:00";
+// dz-reminders pings every day a card has remind_at, so it is set only on the 2 days before the date
+const remindFor = (due: string, today: string) => (today >= addDays(due, -2) && today < due ? REMIND_AT : null);
 
 const CORS = {
   "access-control-allow-origin": "*",
@@ -194,17 +196,18 @@ async function sync(l: Link) {
       const [hw, ex] = await Promise.all([fetchKind(l.credential, a, "homework", today, to), fetchKind(l.credential, a, "exam", today, to)]);
       const cards = [...hw.map((x) => toCard("hw", a, x)), ...ex.map((x) => toCard("ex", a, x))]
         .filter((c) => c.due_date && c.due_date >= today && c.due_date <= to);
-      const { data: existing } = await supabase.from("dz_tasks").select("id,external_id,title,details,due_date,member_id,status")
+      const { data: existing } = await supabase.from("dz_tasks").select("id,external_id,title,details,due_date,member_id,status,remind_at")
         .eq("family_id", l.family_id).eq("source", "eduvulcan").like("external_id", `${a.pupil_id}:%`);
       const byExt = new Map((existing ?? []).map((t) => [t.external_id, t]));
       for (const c of cards) {
         const old = byExt.get(c.external_id);
+        const remind_at = remindFor(c.due_date!, today);
         if (!old) {
           const { error } = await supabase.from("dz_tasks").insert({ family_id: l.family_id, member_id: a.member_id, ...c, source: "eduvulcan",
-            steps: [], repeat: "once", remind_at: REMIND_AT, status: "todo", status_day: today });
+            steps: [], repeat: "once", remind_at, status: "todo", status_day: today });
           if (!error) added++;
-        } else if (old.title !== c.title || old.details !== c.details || old.due_date !== c.due_date || old.member_id !== a.member_id) {
-          await supabase.from("dz_tasks").update({ ...c, member_id: a.member_id, updated_at: new Date().toISOString() }).eq("id", old.id);
+        } else if (old.title !== c.title || old.details !== c.details || old.due_date !== c.due_date || old.member_id !== a.member_id || old.remind_at !== remind_at) {
+          await supabase.from("dz_tasks").update({ ...c, member_id: a.member_id, remind_at, updated_at: new Date().toISOString() }).eq("id", old.id);
           changed++;
         }
       }

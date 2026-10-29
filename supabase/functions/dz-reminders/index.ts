@@ -1,6 +1,6 @@
 // Runs every minute (pg_cron -> pg_net). Sends Web Push for:
 //  - snoozed tasks whose snooze time has passed,
-//  - daily first reminders (remind_at) not yet sent today (dated cards: only the 2 days before),
+//  - daily first reminders (remind_at) not yet sent today,
 //  - help requests (to parents' devices).
 import { createClient } from "npm:@supabase/supabase-js@2.45.4";
 import webpush from "npm:web-push@3.6.7";
@@ -9,7 +9,7 @@ const supabase = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPAB
 
 type Task = {
   id: string; family_id: string; member_id: string; title: string; due: string | null; remind_at: string | null;
-  due_date: string | null; repeat: string; status: string; status_day: string | null; snooze_until: string | null;
+  repeat: string; status: string; status_day: string | null; snooze_until: string | null;
   snooze_notified_at: string | null; remind_notified_day: string | null; help_notified_at: string | null;
 };
 
@@ -18,10 +18,6 @@ function localNow(tz: string) {
     .formatToParts(new Date()).map((p) => [p.type, p.value]));
   return { day: `${parts.year}-${parts.month}-${parts.day}`, hm: `${parts.hour}:${parts.minute}` };
 }
-
-// Cards from the school dziennik remind only on the 2 days before their date
-const addDays = (day: string, n: number) => { const d = new Date(day + "T12:00:00Z"); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
-const inRemindWindow = (t: Task, day: string) => !t.due_date || (day >= addDays(t.due_date, -2) && day < t.due_date);
 
 function effectiveStatus(t: Task, day: string) {
   if (t.repeat === "daily" && t.status_day !== day) return "todo";
@@ -79,7 +75,7 @@ Deno.serve(async (req) => {
     }
 
     if (t.remind_at && st === "todo" && t.remind_notified_day !== day && t.remind_at.slice(0, 5) <= hm &&
-        (t.repeat === "daily" || !t.status_day || t.status_day <= day) && inRemindWindow(t, day)) {
+        (t.repeat === "daily" || !t.status_day || t.status_day <= day)) {
       await push(forMember(), { title: "Czas na: " + t.title, body: t.due ? `Termin przed ${t.due.slice(0, 5)}. Możesz odłożyć.` : "Możesz zrobić teraz albo odłożyć.", task: t.id, kind: "remind" });
       await supabase.from("dz_tasks").update({ remind_notified_day: day }).eq("id", t.id);
     }
