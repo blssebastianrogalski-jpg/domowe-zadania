@@ -225,7 +225,11 @@ function renderRodzic() {
   const ml = $("members"); ml.replaceChildren();
   const sel = $("f-member"); const keep = sel.value; sel.replaceChildren();
   for (const m of S.members) {
-    ml.append(el("li", { class: "row" }, el("div", { class: "t" }, m.name, el("span", { class: "meta" }, m.role === "parent" ? "  · rodzic" : "")), el("div", { class: "acts" }, m.id === S.me.id ? "" : el("button", { class: "ghost", onclick: () => removeMember(m) }, "Usuń"))));
+    const acts = el("div", { class: "acts" });
+    if (m.id !== S.me.id) acts.append(
+      el("button", { class: "ghost", onclick: () => setRole(m, m.role === "parent" ? "child" : "parent") }, m.role === "parent" ? "Zrób wykonującym" : "Zrób rodzicem"),
+      el("button", { class: "ghost", onclick: () => removeMember(m) }, "Usuń"));
+    ml.append(el("li", { class: "row" }, el("div", { class: "t" }, m.name, el("span", { class: "meta" }, m.role === "parent" ? "  · rodzic" : "  · wykonuje zadania")), acts));
     sel.append(el("option", { value: m.id }, m.name));
   }
   if (keep) sel.value = keep; else { const firstChild = S.members.find((m) => m.role === "child"); if (firstChild) sel.value = firstChild.id; }
@@ -242,6 +246,13 @@ async function removeMember(m) {
   if (!confirmTwice(m.id, "Stuknij „Usuń” jeszcze raz. Usunę też zadania osoby " + m.name + ".")) return;
   const { error } = await sb.from("dz_members").delete().eq("id", m.id);
   if (error) toast(errMsg(error)); else { await loadAll(); render(); }
+}
+
+async function setRole(m, role) {
+  const { error } = await sb.from("dz_members").update({ role }).eq("id", m.id);
+  if (error) { toast(errMsg(error)); return; }
+  await loadAll(); render();
+  toast(role === "parent" ? m.name + " jest teraz rodzicem." : m.name + " wykonuje teraz zadania.");
 }
 
 async function bumpTally(delta) {

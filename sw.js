@@ -1,5 +1,5 @@
 // Service worker: app-shell cache + push notifications
-const CACHE = "dz-v1";
+const CACHE = "dz-v2";
 const SHELL = ["./", "index.html", "styles.css", "app.js", "config.js", "manifest.webmanifest", "icons/icon-192.png"];
 
 self.addEventListener("install", (e) => { e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting())); });
