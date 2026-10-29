@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Domowe Zadania</title>
+<meta name="description" content="Rodzinne zadania z odkładaniem bez kary i przypomnieniami.">
+<meta name="theme-color" content="#0E6B66">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/icon-180.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Zadania">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=Lexend:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <h1>Domowe Zadania</h1>
+      <p class="muted small" id="family-line">Odłożenie zadania to nie porażka.</p>
+    </div>
+    <nav class="switch" id="nav" aria-label="Widok" hidden>
+      <a href="#moje" id="nav-moje">Moje zadania</a>
+      <a href="#rodzic" id="nav-rodzic">Dla rodzica</a>
+      <a href="#ustawienia" id="nav-ustawienia" aria-label="Ustawienia">⚙</a>
+    </nav>
+  </header>
+
+  <p id="status" class="note">Łączę…</p>
+
+  <!-- ONBOARDING -->
+  <section id="view-start" hidden>
+    <form class="panel" id="join-form" autocomplete="off">
+      <h2>Dołącz do rodziny</h2>
+      <p class="muted small">Masz kod od rodzica? Wpisz go tutaj.</p>
+      <label>Kod rodziny<input id="join-code" maxlength="6" required placeholder="np. K7QW3P" autocapitalize="characters"></label>
+      <button class="primary" type="submit">Dołącz</button>
+    </form>
+    <form class="panel" id="create-form" autocomplete="off">
+      <h2>Załóż rodzinę</h2>
+      <p class="muted small">Dla rodzica, który przydziela zadania.</p>
+      <label>Nazwa rodziny<input id="c-family" maxlength="60" required placeholder="np. Rodzina Nowaków"></label>
+      <label>Twoje imię<input id="c-name" maxlength="30" required placeholder="np. Mama"></label>
+      <button type="submit">Załóż rodzinę</button>
+    </form>
+  </section>
+
+  <!-- PICK MEMBER -->
+  <section id="view-pick" hidden>
+    <div class="panel">
+      <h2>Kim jesteś na tym telefonie?</h2>
+      <div id="pick" class="chips"></div>
+      <p class="muted small">Jeśli nie ma Cię na liście, poproś rodzica o dodanie.</p>
+    </div>
+  </section>
+
+  <!-- EXECUTOR -->
+  <section id="view-moje" hidden>
+    <div id="notif-hint" class="note" hidden></div>
+    <div id="focus-wrap"></div>
+    <div class="panel" id="later-panel" hidden>
+      <h3>Odłożone</h3>
+      <ul id="later" class="rows"></ul>
+    </div>
+    <div class="panel" id="done-panel" hidden>
+      <h3>Zrobione dzisiaj</h3>
+      <ul id="done" class="rows"></ul>
+    </div>
+  </section>
+
+  <!-- PARENT -->
+  <section id="view-rodzic" hidden>
+    <div class="panel" id="help-panel" hidden>
+      <h2>Prośby o pomoc</h2>
+      <ul id="help" class="rows"></ul>
+    </div>
+    <div class="panel">
+      <h2>Ile razy przypominałeś/aś dziś ustnie?</h2>
+      <div class="tally">
+        <button id="t-minus" aria-label="Odejmij jedno przypomnienie">−1</button>
+        <span class="num" id="t-num">0</span>
+        <button id="t-plus" class="primary">+1 przypomnienie</button>
+        <div class="bars" id="t-bars" aria-label="Ostatnie 7 dni"></div>
+      </div>
+      <p class="muted small">Licz każde „pamiętasz, że miałeś…”. Pierwsze 2 dni zapisuj bez aplikacji, potem z nią.</p>
+    </div>
+    <div class="panel">
+      <h2>Zadania rodziny dziś</h2>
+      <p class="muted small">Widzisz: do zrobienia, w trakcie, potrzebuje pomocy, zrobione. Nie dostajesz informacji o każdym odłożeniu.</p>
+      <div id="board"></div>
+    </div>
+    <form class="panel" id="add-form" autocomplete="off">
+      <h2>Nowe zadanie</h2>
+      <label>Polecenie (krótko)<input id="f-title" required maxlength="80" placeholder="np. Wynieś śmieci"></label>
+      <div class="grid3">
+        <label>Dla kogo<select id="f-member" required></select></label>
+        <label>Pierwsze przypomnienie<input id="f-remind" type="time" value="17:00"></label>
+        <label>Termin<input id="f-due" type="time" value="19:00"></label>
+      </div>
+      <label class="check"><input id="f-repeat" type="checkbox" checked> Powtarzaj codziennie</label>
+      <label>Kroki (każdy w nowej linii, opcjonalnie)
+        <textarea id="f-steps" rows="3" placeholder="worek z kuchni&#10;do altany&#10;nowy worek"></textarea>
+      </label>
+      <button type="submit" class="primary">Dodaj zadanie</button>
+    </form>
+    <div class="panel">
+      <h2>Domownicy</h2>
+      <ul id="members" class="rows"></ul>
+      <form id="m-form" class="inline" autocomplete="off">
+        <input id="m-name" maxlength="30" placeholder="Imię" required>
+        <select id="m-role" aria-label="Rola"><option value="child">wykonuje zadania</option><option value="parent">rodzic</option></select>
+        <button type="submit">Dodaj</button>
+      </form>
+    </div>
+  </section>
+
+  <!-- SETTINGS -->
+  <section id="view-ustawienia" hidden>
+    <div class="panel">
+      <h2>Powiadomienia na tym telefonie</h2>
+      <p class="muted small" id="notif-state"></p>
+      <button class="primary" id="notif-on">Włącz powiadomienia</button>
+      <p class="muted small" id="ios-hint" hidden>Na iPhonie: otwórz tę stronę w Safari, stuknij „Udostępnij” → „Do ekranu początkowego”, a potem uruchom aplikację z ikony i włącz powiadomienia tutaj.</p>
+    </div>
+    <div class="panel" id="invite-panel" hidden>
+      <h2>Zaproś domowników</h2>
+      <p>Kod rodziny: <strong class="code" id="invite-code"></strong></p>
+      <p class="muted small" id="invite-link"></p>
+      <button id="invite-copy">Kopiuj link zaproszenia</button>
+    </div>
+    <div class="panel">
+      <h2>Ten telefon</h2>
+      <p class="muted small" id="me-line"></p>
+      <button id="switch-member">Zmień osobę na tym telefonie</button>
+    </div>
+  </section>
+</div>
+<div id="toast" class="toast" role="status" hidden></div>
+<script src="config.js"></script>
+<script type="module" src="app.js"></script>
+</body>
+</html>
