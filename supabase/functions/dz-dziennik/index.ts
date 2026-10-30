@@ -183,19 +183,35 @@ function toCard(kind: "hw" | "ex", a: Account, x: any) {
     external_id: `${a.pupil_id}:${kind}:${x?.Id}`,
     title: title.slice(0, 80),
     details,
-    due_date: String(x?.Deadline?.Date ?? x?.Date?.Date ?? "").slice(0, 10) || null,
+    due_date: dayOf(x?.DeadlineAt ?? x?.Deadline ?? x?.DateAt ?? x?.Date),
   };
+}
+
+// Dates come as {Date: "YYYY-MM-DD", ...} (older API), an ISO string (eduVULCAN 2025+) or a timestamp
+function dayOf(v: any): string | null {
+  if (v == null) return null;
+  if (typeof v === "object") return dayOf(v.Date ?? v.Timestamp ?? null);
+  if (typeof v === "number") return localParts(new Date(v > 1e12 ? v : v * 1000)).day;
+  const m = String(v).match(/^(\d{4}-\d{2}-\d{2})/);
+  return m ? m[1] : null;
 }
 
 async function sync(l: Link) {
   const today = localParts().day, to = addDays(today, DAYS_AHEAD);
+  // The API may filter by the day an entry was added, not its deadline: ask wider, keep by deadline
+  const from = addDays(today, -DAYS_AHEAD);
   let added = 0, changed = 0, removed = 0;
+  // Counts and field names only (no content), to see why nothing was imported
+  const fetched: unknown[] = [];
   try {
     for (const a of l.accounts) {
       if (!a.member_id) continue;
-      const [hw, ex] = await Promise.all([fetchKind(l.credential, a, "homework", today, to), fetchKind(l.credential, a, "exam", today, to)]);
+      const [hw, ex] = await Promise.all([fetchKind(l.credential, a, "homework", from, to), fetchKind(l.credential, a, "exam", from, to)]);
       const cards = [...hw.map((x) => toCard("hw", a, x)), ...ex.map((x) => toCard("ex", a, x))]
         .filter((c) => c.due_date && c.due_date >= today && c.due_date <= to);
+      fetched.push({ pupil: a.pupil_id, hw: hw.length, ex: ex.length, kept: cards.length,
+        hwKeys: hw[0] ? Object.keys(hw[0]) : [], exKeys: ex[0] ? Object.keys(ex[0]) : [],
+        hwDeadline: hw[0]?.DeadlineAt ?? null, exDeadline: ex[0]?.DeadlineAt ?? ex[0]?.Deadline ?? null, exType: ex[0]?.Type ?? null });
       const { data: existing } = await supabase.from("dz_tasks").select("id,external_id,title,details,due_date,member_id,status,remind_at")
         .eq("family_id", l.family_id).eq("source", "eduvulcan").like("external_id", `${a.pupil_id}:%`);
       const byExt = new Map((existing ?? []).map((t) => [t.external_id, t]));
@@ -218,7 +234,7 @@ async function sync(l: Link) {
     }
     await supabase.from("dz_tasks").delete().eq("family_id", l.family_id).eq("source", "eduvulcan").lt("due_date", addDays(today, -30));
     await supabase.from("dz_school_links").update({ last_sync_at: new Date().toISOString(), last_error: null }).eq("family_id", l.family_id);
-    return { added, changed, removed };
+    return { added, changed, removed, fetched };
   } catch (e) {
     await supabase.from("dz_school_links").update({ last_error: errText(e) }).eq("family_id", l.family_id);
     throw e;
