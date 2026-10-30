@@ -163,6 +163,7 @@ function renderMoje() {
   const dp = $("done"); dp.replaceChildren(); $("done-panel").hidden = !done.length;
   for (const t of done) dp.append(el("li", { class: "row" }, el("div", { class: "t" }, t.title), el("span", { class: "pill s-done" }, "Zrobione")));
   document.title = due.length ? "⏰ " + due[0].title : "Domowe Zadania";
+  renderWeek();
 }
 
 function focusCard(t, more) {
@@ -189,7 +190,7 @@ function focusCard(t, more) {
   if (s === "help") card.append(el("p", { class: "soon" }, "Wysłano prośbę o pomoc. Ktoś zaraz przyjdzie."));
 
   const acts = el("div", { class: "actions" });
-  acts.append(el("button", { class: "primary", onclick: async () => { if (await act(t, "done")) toast("Zadanie oznaczone jako wykonane."); } }, "Zrobione"));
+  acts.append(el("button", { class: "primary", onclick: async () => { if (await act(t, "done")) cheer(); } }, "Zrobione"));
   acts.append(el("button", { disabled: s === "doing", onclick: async () => { if (await act(t, "doing")) toast("OK, zadanie zostaje na ekranie."); } }, "Robię teraz"));
   acts.append(el("button", { disabled: s === "help", onclick: async () => { if (await act(t, "help")) toast("Dałem znać, że potrzebujesz pomocy."); } }, "Potrzebuję pomocy"));
   const later = el("button", { "aria-expanded": "false" }, "Przypomnij później");
@@ -205,6 +206,48 @@ function focusCard(t, more) {
   card.append(box);
   if (more > 0) card.append(el("p", { class: "muted small" }, "Potem jeszcze " + more + (more === 1 ? " zadanie" : more < 5 ? " zadania" : " zadań") + ". Jedno naraz."));
   return card;
+}
+
+// Reward after "Zrobione": confetti, a random praise and today's star count; tap or wait to close
+const PRAISE = ["Super robota!", "Brawo, jedno z głowy!", "Mistrz zadań!", "Tak trzymać!", "Ekstra, zrobione!", "Jesteś niesamowity/a!"];
+function cheer() {
+  const box = $("cheer");
+  const stars = S.me ? S.tasks.filter((x) => x.member_id === S.me.id && st(x) === "done" && x.status_day === today()).length : 1;
+  const bits = el("div", { class: "confetti", "aria-hidden": "true" });
+  for (let i = 0; i < 36; i++) {
+    const c = el("i");
+    c.style.left = Math.random() * 100 + "%";
+    c.style.animationDelay = Math.random() * 0.5 + "s";
+    c.style.animationDuration = 1.6 + Math.random() * 1.2 + "s";
+    c.style.background = ["#FFD23F", "#FF5C8A", "#3DD68C", "#2F5BFF", "#B9A4FF", "#FF9E7A"][i % 6];
+    bits.append(c);
+  }
+  box.replaceChildren(bits, el("div", { class: "card" },
+    el("div", { class: "big", "aria-hidden": "true" }, "⭐"),
+    el("div", { class: "praise" }, PRAISE[Math.floor(Math.random() * PRAISE.length)]),
+    el("div", { class: "count" }, "Dziś zebrane gwiazdki: " + "⭐".repeat(Math.min(stars, 10)) + (stars > 10 ? " ×" + stars : ""))));
+  box.hidden = false;
+  clearTimeout(cheer.t);
+  cheer.t = setTimeout(() => (box.hidden = true), 3200);
+}
+$("cheer").onclick = () => ($("cheer").hidden = true);
+
+// On Friday to Sunday the child sees next week's school cards, one row per day
+function renderWeek() {
+  const dow = new Date().getDay();
+  const panel = $("week-panel");
+  panel.hidden = ![5, 6, 0].includes(dow);
+  if (panel.hidden) return;
+  const mon = addDays(today(), dow === 0 ? 1 : 8 - dow);
+  const box = $("week"); box.replaceChildren();
+  for (let i = 0; i < 5; i++) {
+    const d = addDays(mon, i);
+    const ts = S.tasks.filter((t) => t.member_id === S.me.id && t.due_date === d).sort((a, b) => a.title.localeCompare(b.title));
+    const ul = el("ul", { class: "rows" });
+    if (!ts.length) ul.append(el("li", { class: "empty" }, "Nic z dziennika."));
+    for (const t of ts) ul.append(el("li", { class: "row" }, el("div", { class: "t" }, el("div", {}, t.title), t.details ? el("div", { class: "meta" }, t.details) : "")));
+    box.append(el("div", { class: "day" }, el("h4", {}, dayLabel(d)), ul));
+  }
 }
 
 // ---------- parent ----------
@@ -386,6 +429,7 @@ function renderSettings() {
     $("invite-link").textContent = inviteLink();
   }
   $("me-line").textContent = "Ten telefon należy do: " + (S.me ? S.me.name : "—");
+  $("switch-member").textContent = S.isParent ? "Zmień osobę na tym telefonie" : "Zmień osobę (rodzic)";
   renderSkins();
 }
 // ---------- skins: each member picks a look, remembered per person on this device ----------
@@ -423,7 +467,20 @@ function renderSkins() {
 }
 const inviteLink = () => location.origin + location.pathname + "?kod=" + S.family.invite_code;
 $("invite-copy").onclick = async () => { try { await navigator.clipboard.writeText(inviteLink()); toast("Skopiowano link."); } catch { toast("Skopiuj link ręcznie."); } };
-$("switch-member").onclick = () => { S.me = null; S.isParent = false; render(); };
+// Only a parent may change who uses this phone: a child's phone asks for the family code, which only parents can see
+const switchMember = () => { S.me = null; S.isParent = false; render(); };
+$("switch-member").onclick = () => {
+  if (S.isParent) return switchMember();
+  $("switch-lock").hidden = false; $("switch-hint").hidden = false; $("switch-code").focus();
+};
+$("switch-lock").addEventListener("submit", (e) => {
+  e.preventDefault();
+  const ok = S.family && $("switch-code").value.trim().toUpperCase() === String(S.family.invite_code).toUpperCase();
+  $("switch-code").value = "";
+  if (!ok) { toast("To nie jest kod rodziny. Poproś rodzica."); return; }
+  $("switch-lock").hidden = true; $("switch-hint").hidden = true;
+  switchMember();
+});
 
 function b64urlToUint8(s) { const p = "=".repeat((4 - (s.length % 4)) % 4); const b = atob((s + p).replace(/-/g, "+").replace(/_/g, "/")); return Uint8Array.from(b, (c) => c.charCodeAt(0)); }
 async function enablePush() {
@@ -454,7 +511,7 @@ async function handleUrlAction() {
   if (id && a && S.device) {
     const t = S.tasks.find((x) => x.id === id);
     if (t) {
-      if (a === "done" && (await act(t, "done"))) toast("Zadanie oznaczone jako wykonane.");
+      if (a === "done" && (await act(t, "done"))) cheer();
       if (a === "snooze20") { const ms = Date.now() + 20 * 60000; if (await act(t, "snoozed", ms)) toast("OK, wrócę do Ciebie o " + hm(ms) + "."); }
     }
   }
