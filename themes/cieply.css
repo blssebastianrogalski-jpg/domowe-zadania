@@ -1,0 +1,29 @@
+/* Skin: Ciepły poranek – kremowe tło, terakota, miękkie cienie, szeryfowe nagłówki */
+@import url("https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700&family=Nunito:wght@400;600;700;800&display=swap");
+html:root[data-theme]{
+  --bg:#F8F1E7; --surface:#FFFCF7; --ink:#2E221B; --muted:#7A685C; --line:#EADFD1;
+  --accent:#C2532E; --accent-ink:#FFFFFF; --accent-soft:#F6E1D3;
+  --help:#9B4A12; --help-bg:#FCE3C9; --done:#4F7A3A; --done-bg:#E4EFD8; --doing:#7A4C9A; --doing-bg:#EEE3F5; --todo-bg:#F0E8DD;
+  --f-display:"Fraunces", Georgia, serif; --f-body:"Nunito", system-ui, sans-serif; --r:22px;
+}
+body{font-size:16.5px}
+h1{font-size:1.75rem;letter-spacing:-.01em}
+.panel{border:0;box-shadow:0 1px 2px rgba(80,50,30,.06),0 8px 24px rgba(80,50,30,.07);padding:20px}
+.switch{border:0;background:#EFE4D6;padding:5px}
+.switch a{font-weight:700}
+.switch a[aria-current="page"]{background:var(--surface);color:var(--accent);box-shadow:0 2px 8px rgba(80,50,30,.12)}
+button,.btn{border-radius:999px;border-color:var(--line);font-weight:700;padding:10px 18px}
+button.primary{box-shadow:0 6px 16px rgba(194,83,46,.28)}
+.focus{border:0;border-radius:28px;padding:24px;background:linear-gradient(180deg,#FFF7EE 0%,#FFFCF7 60%);box-shadow:0 2px 4px rgba(80,50,30,.06),0 18px 40px rgba(194,83,46,.14)}
+.focus .title{font-size:2rem;font-weight:700}
+.steps label{background:#F6EDE2;border-radius:16px}
+.steps input{accent-color:var(--accent)}
+.actions button{border-radius:20px;min-height:60px}
+.pill{font-weight:800;padding:4px 12px}
+.soon{border-radius:16px;background:#FCE3C9;color:#8A3F0E}
+.note{border-radius:16px}
+input,select,textarea{border-radius:14px;background:#FBF6EF}
+.bars i{border-radius:8px 8px 3px 3px;background:linear-gradient(180deg,#E08A5F,#C2532E)}
+.tally .num{color:var(--accent)}
+.row{border-top:1px dashed var(--line)}
+a{color:var(--accent);font-weight:700}

@@ -1,0 +1,45 @@
+/* Skin: Klockowy plac – bryłowe przyciski 3D, wypustki jak w klockach, jaskrawe kolory */
+@import url("https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600;700&display=swap");
+html:root[data-theme]{
+  --bg:#E9F1FA; --surface:#FFFFFF; --ink:#1B2433; --muted:#5A6576; --line:#CBD6E4;
+  --accent:#00A2FF; --accent-ink:#FFFFFF; --accent-soft:#DDF1FF;
+  --help:#FFFFFF; --help-bg:#FF4D4D; --done:#FFFFFF; --done-bg:#20C05C; --doing:#FFFFFF; --doing-bg:#8B5CF6; --todo-bg:#FFC21A;
+  --f-display:"Fredoka", system-ui, sans-serif; --f-body:"Fredoka", system-ui, sans-serif; --r:14px;
+}
+html,body{background:#E9F1FA radial-gradient(circle at 50% 50%,#D6E3F2 5px,#C3D3E6 5.5px,transparent 6.5px) 0 0/28px 28px}
+body{font-size:16.5px}
+h1{font-size:2rem;font-weight:700;letter-spacing:.01em;color:#1B2433}
+h1::before{content:"";display:inline-block;width:30px;height:30px;margin-right:10px;vertical-align:-4px;border-radius:7px;background:#FFC21A;
+  box-shadow:inset 0 -5px 0 #D79A00, 0 3px 0 #1B2433;
+  background-image:radial-gradient(circle at 34% 40%,#1B2433 2.6px,transparent 3px),radial-gradient(circle at 66% 40%,#1B2433 2.6px,transparent 3px),linear-gradient(#1B2433,#1B2433);
+  background-size:100% 100%,100% 100%,12px 3px;background-repeat:no-repeat;background-position:0 0,0 0,50% 70%}
+h2,h3{font-weight:700}
+.panel{border:3px solid #1B2433;box-shadow:0 6px 0 #1B2433;padding:18px;border-radius:16px}
+.switch{border:3px solid #1B2433;box-shadow:0 4px 0 #1B2433;background:#fff}
+.switch a{color:#1B2433;font-weight:600}
+.switch a[aria-current="page"]{background:#FF4D4D;color:#fff;box-shadow:inset 0 -4px 0 #C42F2F}
+button,.btn{border:3px solid #1B2433;border-radius:14px;font-weight:700;background:#fff;box-shadow:inset 0 -5px 0 #D3DDEA,0 4px 0 #1B2433;padding:10px 16px 13px}
+button.primary{background:#00A2FF;color:#fff;box-shadow:inset 0 -5px 0 #0074BA,0 4px 0 #1B2433}
+button.ghost{box-shadow:inset 0 -4px 0 #E3E9F1}
+button:disabled{opacity:.45;box-shadow:none;transform:translateY(4px)}
+.focus{border:3px solid #1B2433;border-radius:22px;box-shadow:0 10px 0 #1B2433;padding:22px;position:relative;margin-top:16px;overflow:visible;background:#fff}
+.focus::before{content:"";position:absolute;left:24px;right:24px;top:-17px;height:14px;
+  background:radial-gradient(circle at 50% 100%,#FFC21A 10px,#1B2433 10.5px,#1B2433 13px,transparent 13.5px) 0 0/36px 14px repeat-x}
+.focus .title{font-family:var(--f-display);font-size:2.2rem;font-weight:700}
+.steps label{background:#F3F7FC;border:3px solid #1B2433;border-radius:12px;font-weight:500;box-shadow:inset 0 -4px 0 #DCE5F0}
+.steps input{accent-color:#20C05C}
+.actions button{color:#fff;font-size:1.05rem;border-color:#1B2433}
+.actions button:nth-child(1){background:#20C05C;box-shadow:inset 0 -6px 0 #128A3E,0 5px 0 #1B2433}
+.actions button:nth-child(2){background:#FFC21A;color:#1B2433;box-shadow:inset 0 -6px 0 #D79A00,0 5px 0 #1B2433}
+.actions button:nth-child(3){background:#FF4D4D;box-shadow:inset 0 -6px 0 #C42F2F,0 5px 0 #1B2433}
+.actions button:nth-child(4){background:#8B5CF6;box-shadow:inset 0 -6px 0 #6236C9,0 5px 0 #1B2433}
+.pill{border:2px solid #1B2433;font-weight:700;padding:3px 12px;box-shadow:inset 0 -3px 0 rgba(0,0,0,.18)}
+.s-todo{color:#1B2433}
+.soon{background:#FFF3C4;color:#1B2433;border:3px solid #1B2433;border-radius:14px;font-weight:600}
+.note{background:#DDF1FF;color:#1B2433;border:3px solid #1B2433;border-radius:14px}
+a{color:#0074BA;font-weight:700}
+input,select,textarea{border:3px solid #1B2433;border-radius:12px;background:#F7FAFD}
+.row{border-top:3px solid #E3E9F1}
+.bars i{background:#00A2FF;border:2px solid #1B2433;border-bottom:0;border-radius:5px 5px 0 0;width:20px}
+.tally .num{font-family:var(--f-display);font-weight:700;background:#FFC21A;border:3px solid #1B2433;border-radius:14px;padding:0 14px;box-shadow:inset 0 -5px 0 #D79A00,0 4px 0 #1B2433}
+.code{font-family:var(--f-display);background:#1B2433;color:#FFC21A;padding:2px 10px;border-radius:8px}

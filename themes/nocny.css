@@ -1,0 +1,30 @@
+/* Skin: Nocny granat – ciemny motyw, limonka + fiolet, technologiczny krój */
+@import url("https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,700&display=swap");
+html:root[data-theme]{
+  --bg:#0C0F22; --surface:#161A35; --ink:#EEF0FF; --muted:#9298C2; --line:#272C52;
+  --accent:#C8F25A; --accent-ink:#11142A; --accent-soft:#1E2444;
+  --help:#FFB36B; --help-bg:#3A2716; --done:#7BE0A6; --done-bg:#15352A; --doing:#A99BFF; --doing-bg:#262358; --todo-bg:#22274A;
+  --f-display:"Space Grotesk", system-ui, sans-serif; --f-body:"DM Sans", system-ui, sans-serif; --r:18px; color-scheme:dark;
+}
+html,body{background:radial-gradient(120% 60% at 100% 0%,#22205A 0%,#0C0F22 55%) fixed var(--bg)}
+h1{font-size:1.55rem;letter-spacing:-.02em}
+h1::before{content:"";display:inline-block;width:10px;height:10px;border-radius:50%;background:var(--accent);margin-right:10px;vertical-align:middle;box-shadow:0 0 12px var(--accent)}
+.panel{background:rgba(22,26,53,.78);border-color:#262B55;backdrop-filter:blur(8px)}
+.switch{background:rgba(22,26,53,.9);border-color:#2C3260}
+.switch a[aria-current="page"]{box-shadow:0 0 16px rgba(200,242,90,.35)}
+button,.btn{background:#1D2244;border-color:#2E3462;border-radius:14px}
+button.primary{box-shadow:0 0 0 1px rgba(200,242,90,.4),0 8px 22px rgba(200,242,90,.18)}
+.focus{position:relative;border:1px solid transparent;border-radius:24px;padding:22px;
+  background:linear-gradient(#171B38,#171B38) padding-box,linear-gradient(135deg,#C8F25A,#8B7CFF 55%,#3B3F7A) border-box;box-shadow:0 20px 50px rgba(0,0,0,.45)}
+.focus .title{font-size:1.9rem;letter-spacing:-.02em}
+.focus .when{color:#B7BCE6}
+.steps label{background:#1F2448;border:1px solid #2A3060}
+.steps input{accent-color:var(--accent)}
+.soon{background:linear-gradient(90deg,#2B2766,#1F2448);color:#D6CFFF;border:1px solid #3B3790}
+.pill{text-transform:uppercase;letter-spacing:.06em;font-size:.68rem;padding:3px 10px}
+input,select,textarea{background:#10132A;border-color:#2C3260}
+.note{background:#1E2444;color:#B7BCE6}
+.bars i{background:linear-gradient(180deg,#C8F25A,#8B7CFF);border-radius:6px}
+.tally .num{color:var(--accent);text-shadow:0 0 18px rgba(200,242,90,.4)}
+.code{color:var(--accent)}
+.note a{color:var(--accent)}
