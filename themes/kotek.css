@@ -1,0 +1,49 @@
+/* Skin: Pastelowy kotek – pastele, okrągłe kształty, kocie uszka na karcie i pyszczek przy nazwie */
+@import url("https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Nunito:wght@400;600;700;800&display=swap");
+html:root[data-theme]{
+  --bg:#FDF4F8; --surface:#FFFFFF; --ink:#4A3F55; --muted:#8C7F99; --line:#EBDDF0;
+  --accent:#B79CE0; --accent-ink:#FFFFFF; --accent-soft:#F1E8FB;
+  --help:#B4546E; --help-bg:#FFE0E8; --done:#3F8A6A; --done-bg:#D8F3E6; --doing:#4F6FB0; --doing-bg:#DCE8FF; --todo-bg:#FFF1C9;
+  --f-display:"Fredoka", system-ui, sans-serif; --f-body:"Nunito", system-ui, sans-serif; --r:26px;
+}
+html,body{background:#FDF4F8 radial-gradient(circle at 20% 30%,#F9E3EE 0 3px,transparent 3.5px) 0 0/34px 34px,radial-gradient(circle at 70% 75%,#E9E1FA 0 3px,transparent 3.5px) 0 0/34px 34px}
+h1{font-size:1.9rem;font-weight:700;color:#7E62B8}
+h1::before{content:"";display:inline-block;width:34px;height:28px;margin-right:10px;vertical-align:-3px;
+  background:
+    radial-gradient(circle at 34% 58%,#4A3F55 2.4px,transparent 2.8px),
+    radial-gradient(circle at 66% 58%,#4A3F55 2.4px,transparent 2.8px),
+    radial-gradient(ellipse at 22% 76%,#FFB7CC 3.5px,transparent 4px),
+    radial-gradient(ellipse at 78% 76%,#FFB7CC 3.5px,transparent 4px),
+    linear-gradient(#C9C3D3,#C9C3D3);
+  border-radius:50% 50% 46% 46% / 60% 60% 40% 40%;
+  clip-path:polygon(0 100%,0 0,26% 32%,74% 32%,100% 0,100% 100%)}
+h2,h3{font-weight:600;color:#6A5390}
+.panel{border:2px solid #F1E3F3;box-shadow:0 6px 18px rgba(183,156,224,.18);padding:20px}
+.switch{border:2px solid #EBDDF0;background:#fff}
+.switch a{font-weight:700}
+.switch a[aria-current="page"]{background:linear-gradient(135deg,#FFB7CC,#B79CE0);color:#fff}
+button,.btn{border-radius:999px;border:2px solid #EBDDF0;font-weight:700;color:#5A4E66}
+button.primary{background:linear-gradient(135deg,#C7AEEC,#A98ADB);border-color:transparent;box-shadow:0 6px 14px rgba(169,138,219,.35)}
+.focus{position:relative;border:3px solid #E7D8F6;border-radius:34px;padding:24px;margin-top:22px;background:#fff;box-shadow:0 14px 34px rgba(183,156,224,.25)}
+.focus::before,.focus::after{content:"";position:absolute;top:-30px;width:56px;height:42px;z-index:-1;
+  background:radial-gradient(ellipse at 50% 85%,#FFC2D4 0 13px,transparent 14px),#D9C8F2;clip-path:polygon(50% 0,100% 100%,0 100%)}
+.focus{isolation:isolate}
+.focus::before{left:30px;transform:rotate(-14deg)}
+.focus::after{right:30px;transform:rotate(14deg)}
+.focus .title{font-family:var(--f-display);font-size:2.1rem;font-weight:700;color:#5E4787}
+.steps label{background:#FBF6FF;border:2px solid #EFE4FA;border-radius:18px;font-weight:600}
+.steps input{accent-color:#F497B4}
+.actions button{border-radius:22px;min-height:60px;border-color:transparent}
+.actions button:nth-child(1){background:#8FD9B6;color:#24543F;box-shadow:0 5px 0 #6CBF98}
+.actions button:nth-child(2){background:#CFE0FF;color:#3C5A99;box-shadow:0 5px 0 #A9C3F2}
+.actions button:nth-child(3){background:#FFC2D2;color:#8C3550;box-shadow:0 5px 0 #F59DB6}
+.actions button:nth-child(4){background:#FFE7A3;color:#7A5A10;box-shadow:0 5px 0 #F2CF6B}
+.pill{font-weight:800;padding:4px 12px}
+.soon{background:#FFF1C9;color:#7A5A10;border-radius:18px}
+.note{background:#F1E8FB;color:#5E4787;border-radius:18px}
+a{color:#A27BD8;font-weight:700}
+input,select,textarea{border:2px solid #EBDDF0;border-radius:16px;background:#FFFBFE}
+.row{border-top:2px dotted #EBDDF0}
+.bars i{border-radius:10px 10px 4px 4px;background:linear-gradient(180deg,#FFB7CC,#B79CE0)}
+.tally .num{color:#A27BD8}
+.code{color:#A27BD8}

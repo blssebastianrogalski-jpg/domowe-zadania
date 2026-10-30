@@ -396,7 +396,10 @@ const SKINS = [
   { id: "klocki", name: "Kolorowe klocki", sw: ["#FF5C8A", "#FFD23F"] },
   { id: "piksele", name: "Pikselowy świat", sw: ["#5DB548", "#8B5A2B"] },
   { id: "plac", name: "Klockowy plac", sw: ["#00A2FF", "#FF4D4D"] },
+  { id: "kotek", name: "Pastelowy kotek", sw: ["#FFB7CC", "#B79CE0"] },
+  { id: "ninja", name: "Wojownik ninja", sw: ["#E1261C", "#141414"] },
 ];
+const DARK = ["nocny", "ninja"];
 const skinKey = () => "dz-skin-" + (S.me ? S.me.id : "none");
 function skinOf() {
   let k = null;
@@ -407,7 +410,7 @@ function applySkin() {
   const k = skinOf(), link = $("skin-css"), root = document.documentElement;
   const href = k === "morski" ? "" : "themes/" + k + ".css";
   if (link.getAttribute("href") !== href) { if (href) link.setAttribute("href", href); else link.removeAttribute("href"); }
-  if (k === "morski") delete root.dataset.theme; else root.dataset.theme = k === "nocny" ? "dark" : "light";
+  if (k === "morski") delete root.dataset.theme; else root.dataset.theme = DARK.includes(k) ? "dark" : "light";
   try { localStorage.setItem("dz-skin", k); } catch {}
 }
 function renderSkins() {

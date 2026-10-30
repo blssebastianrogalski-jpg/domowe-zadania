@@ -17,7 +17,7 @@
 <link rel="stylesheet" id="skin-css">
 <script>
 // Apply the last used skin before first paint; app.js then switches to the current person's choice
-try { const k = localStorage.getItem("dz-skin"); if (k && k !== "morski") { document.getElementById("skin-css").href = "themes/" + k + ".css"; document.documentElement.dataset.theme = k === "nocny" ? "dark" : "light"; } } catch {}
+try { const k = localStorage.getItem("dz-skin"); if (k && k !== "morski") { document.getElementById("skin-css").href = "themes/" + k + ".css"; document.documentElement.dataset.theme = k === "nocny" || k === "ninja" ? "dark" : "light"; } } catch {}
 </script>
 </head>
 <body>
