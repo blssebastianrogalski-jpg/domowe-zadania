@@ -18,3 +18,7 @@ Push działa na iOS 16.4+ tylko po dodaniu aplikacji do ekranu początkowego (Sa
 - Rodzic łączy dziennik w widoku „Dla rodzica”, wklejając dane ze strony `eduvulcan.pl/api/ap`. Hasło nie trafia na serwer: funkcja rejestruje się w eduVULCAN jako kolejny telefon (klucz RSA w tabeli `dz_school_links`, dostęp tylko dla roli serwisowej).
 - To nieoficjalne API aplikacji mobilnej (za iris, dampud/vulcan, hebece). Może przestać działać po zmianach VULCAN; błąd widać w panelu rodzica.
 - Funkcje `dz-reminders` i `dz-dziennik` wdrażane z wyłączoną weryfikacją JWT (same sprawdzają sekret crona albo zalogowanego rodzica).
+
+## Wygląd
+- Każdy domownik wybiera wygląd w Ustawieniach (Morski, Ciepły poranek, Nocny granat, Kolorowe klocki, Pikselowy świat, Klockowy plac). Wybór zapamiętuje telefon osobno dla każdej osoby; domyślnie rodzic ma Morski, dziecko Kolorowe klocki.
+- Każdy wygląd to plik w `themes/`, ładowany po `styles.css` i nadpisujący jego kolory, czcionki i kształty.

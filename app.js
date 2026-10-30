@@ -99,6 +99,7 @@ addEventListener("hashchange", () => render());
 
 function render() {
   const v = view();
+  applySkin();
   for (const name of ["start", "pick", "moje", "rodzic", "ustawienia"]) $("view-" + name).hidden = v !== name;
   $("nav").hidden = !(S.device && S.me);
   $("nav-rodzic").hidden = !S.isParent;
@@ -385,6 +386,37 @@ function renderSettings() {
     $("invite-link").textContent = inviteLink();
   }
   $("me-line").textContent = "Ten telefon należy do: " + (S.me ? S.me.name : "—");
+  renderSkins();
+}
+// ---------- skins: each member picks a look, remembered per person on this device ----------
+const SKINS = [
+  { id: "morski", name: "Morski", sw: ["#0E6B66", "#EEF3F4"] },
+  { id: "cieply", name: "Ciepły poranek", sw: ["#C2532E", "#F8F1E7"] },
+  { id: "nocny", name: "Nocny granat", sw: ["#C8F25A", "#0C0F22"] },
+  { id: "klocki", name: "Kolorowe klocki", sw: ["#FF5C8A", "#FFD23F"] },
+  { id: "piksele", name: "Pikselowy świat", sw: ["#5DB548", "#8B5A2B"] },
+  { id: "plac", name: "Klockowy plac", sw: ["#00A2FF", "#FF4D4D"] },
+];
+const skinKey = () => "dz-skin-" + (S.me ? S.me.id : "none");
+function skinOf() {
+  let k = null;
+  try { k = localStorage.getItem(skinKey()); } catch {}
+  return SKINS.some((x) => x.id === k) ? k : S.me && !S.isParent ? "klocki" : "morski";
+}
+function applySkin() {
+  const k = skinOf(), link = $("skin-css"), root = document.documentElement;
+  const href = k === "morski" ? "" : "themes/" + k + ".css";
+  if (link.getAttribute("href") !== href) { if (href) link.setAttribute("href", href); else link.removeAttribute("href"); }
+  if (k === "morski") delete root.dataset.theme; else root.dataset.theme = k === "nocny" ? "dark" : "light";
+  try { localStorage.setItem("dz-skin", k); } catch {}
+}
+function renderSkins() {
+  const box = $("skins"); box.replaceChildren();
+  const cur = skinOf();
+  for (const x of SKINS) box.append(el("button", { class: "chip skin", "aria-pressed": String(x.id === cur), onclick: () => {
+    try { localStorage.setItem(skinKey(), x.id); } catch {}
+    applySkin(); renderSkins();
+  } }, el("i", { style: "background:linear-gradient(135deg," + x.sw[0] + " 50%," + x.sw[1] + " 50%)" }), x.name));
 }
 const inviteLink = () => location.origin + location.pathname + "?kod=" + S.family.invite_code;
 $("invite-copy").onclick = async () => { try { await navigator.clipboard.writeText(inviteLink()); toast("Skopiowano link."); } catch { toast("Skopiuj link ręcznie."); } };

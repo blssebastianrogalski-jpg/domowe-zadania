@@ -14,6 +14,11 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=Lexend:wght@400;500;600&display=swap">
 <link rel="stylesheet" href="styles.css">
+<link rel="stylesheet" id="skin-css">
+<script>
+// Apply the last used skin before first paint; app.js then switches to the current person's choice
+try { const k = localStorage.getItem("dz-skin"); if (k && k !== "morski") { document.getElementById("skin-css").href = "themes/" + k + ".css"; document.documentElement.dataset.theme = k === "nocny" ? "dark" : "light"; } } catch {}
+</script>
 </head>
 <body>
 <div class="wrap">
@@ -134,6 +139,11 @@
       <p>Kod rodziny: <strong class="code" id="invite-code"></strong></p>
       <p class="muted small" id="invite-link"></p>
       <button id="invite-copy">Kopiuj link zaproszenia</button>
+    </div>
+    <div class="panel">
+      <h2>Wygląd</h2>
+      <p class="muted small">Każdy domownik wybiera swój. Zapamiętam go dla osoby na tym telefonie.</p>
+      <div id="skins" class="skins"></div>
     </div>
     <div class="panel">
       <h2>Ten telefon</h2>
