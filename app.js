@@ -163,6 +163,7 @@ function renderMoje() {
   const dp = $("done"); dp.replaceChildren(); $("done-panel").hidden = !done.length;
   for (const t of done) dp.append(el("li", { class: "row" }, el("div", { class: "t" }, t.title), el("span", { class: "pill s-done" }, "Zrobione")));
   document.title = due.length ? "⏰ " + due[0].title : "Domowe Zadania";
+  renderWeek();
 }
 
 function focusCard(t, more) {
@@ -189,12 +190,20 @@ function focusCard(t, more) {
   if (s === "help") card.append(el("p", { class: "soon" }, "Wysłano prośbę o pomoc. Ktoś zaraz przyjdzie."));
 
   const acts = el("div", { class: "actions" });
-  acts.append(el("button", { class: "primary", onclick: async () => { if (await act(t, "done")) toast("Zadanie oznaczone jako wykonane."); } }, "Zrobione"));
+  acts.append(el("button", { class: "primary", onclick: async () => { if (await act(t, "done")) cheer(); } }, "Zrobione"));
   acts.append(el("button", { disabled: s === "doing", onclick: async () => { if (await act(t, "doing")) toast("OK, zadanie zostaje na ekranie."); } }, "Robię teraz"));
-  acts.append(el("button", { disabled: s === "help", onclick: async () => { if (await act(t, "help")) toast("Dałem znać, że potrzebujesz pomocy."); } }, "Potrzebuję pomocy"));
+  const help = el("button", { "aria-expanded": "false" }, "Potrzebuję pomocy");
+  acts.append(help);
   const later = el("button", { "aria-expanded": "false" }, "Przypomnij później");
   acts.append(later);
   card.append(acts);
+
+  // Help: the child chooses between calling a parent and the AI helper that guides with questions
+  const helpBox = el("div", { class: "helpbox", hidden: true },
+    el("button", { class: "primary", disabled: s === "help", onclick: async () => { if (await act(t, "help")) toast("Dałem znać rodzicowi, że potrzebujesz pomocy."); } }, s === "help" ? "Rodzic już wie" : "🙋 Pomoc rodzica"),
+    el("button", { onclick: () => openHelper(t) }, "🤖 Pomocnik AI"));
+  help.onclick = () => { helpBox.hidden = !helpBox.hidden; help.setAttribute("aria-expanded", String(!helpBox.hidden)); };
+  card.append(helpBox);
 
   const box = el("div", { class: "snooze", hidden: true });
   const snooze = async (ms) => { if (await act(t, "snoozed", ms)) toast("OK, wrócę do Ciebie o " + hm(ms) + "." + (t.due ? " Termin dalej: przed " + t5(t.due) + "." : "")); };
@@ -205,6 +214,90 @@ function focusCard(t, more) {
   card.append(box);
   if (more > 0) card.append(el("p", { class: "muted small" }, "Potem jeszcze " + more + (more === 1 ? " zadanie" : more < 5 ? " zadania" : " zadań") + ". Jedno naraz."));
   return card;
+}
+
+// ---------- AI helper (dz-pomocnik): asks guiding questions, never gives the answer ----------
+const chats = {};
+let helperTask = null;
+function openHelper(t) {
+  helperTask = t;
+  chats[t.id] ??= [];
+  $("ai-title").textContent = t.title;
+  $("ai").hidden = false;
+  renderChat();
+  if (!chats[t.id].length) askHelper();
+  else $("ai-input").focus();
+}
+function renderChat(busy = false) {
+  const box = $("ai-log"); box.replaceChildren();
+  for (const m of chats[helperTask.id]) box.append(el("p", { class: "msg " + (m.role === "user" ? "me" : "bot") }, m.content));
+  if (busy) box.append(el("p", { class: "msg bot typing" }, "Pomocnik myśli…"));
+  box.scrollTop = box.scrollHeight;
+  $("ai-send").disabled = busy;
+}
+async function askHelper() {
+  const t = helperTask, log = chats[t.id];
+  renderChat(true);
+  const { data, error } = await sb.functions.invoke("dz-pomocnik", { body: { task_id: t.id, messages: log } });
+  let msg = data?.reply;
+  if (error) { msg = null; try { const j = await error.context.json(); msg = j?.error; } catch {} msg = "⚠️ " + (msg || "Pomocnik chwilowo nie odpowiada. Spróbuj za chwilę albo poproś rodzica."); }
+  if (helperTask !== t) return;
+  if (error) { renderChat(); $("ai-log").append(el("p", { class: "msg err" }, msg)); return; }
+  log.push({ role: "assistant", content: msg });
+  renderChat();
+  $("ai-input").focus();
+}
+$("ai-form").addEventListener("submit", (e) => {
+  e.preventDefault();
+  const text = $("ai-input").value.trim();
+  if (!text || !helperTask) return;
+  $("ai-input").value = "";
+  chats[helperTask.id].push({ role: "user", content: text.slice(0, 800) });
+  askHelper();
+});
+$("ai-close").onclick = () => { $("ai").hidden = true; helperTask = null; };
+$("ai-parent").onclick = async () => { const t = helperTask; if (t && (await act(t, "help"))) { toast("Dałem znać rodzicowi, że potrzebujesz pomocy."); $("ai").hidden = true; helperTask = null; } };
+
+// Reward after "Zrobione": confetti, a random praise and today's star count; tap or wait to close
+const PRAISE = ["Super robota!", "Brawo, jedno z głowy!", "Mistrz zadań!", "Tak trzymać!", "Ekstra, zrobione!", "Jesteś niesamowity/a!"];
+function cheer() {
+  const box = $("cheer");
+  const stars = S.me ? S.tasks.filter((x) => x.member_id === S.me.id && st(x) === "done" && x.status_day === today()).length : 1;
+  const bits = el("div", { class: "confetti", "aria-hidden": "true" });
+  for (let i = 0; i < 36; i++) {
+    const c = el("i");
+    c.style.left = Math.random() * 100 + "%";
+    c.style.animationDelay = Math.random() * 0.5 + "s";
+    c.style.animationDuration = 1.6 + Math.random() * 1.2 + "s";
+    c.style.background = ["#FFD23F", "#FF5C8A", "#3DD68C", "#2F5BFF", "#B9A4FF", "#FF9E7A"][i % 6];
+    bits.append(c);
+  }
+  box.replaceChildren(bits, el("div", { class: "card" },
+    el("div", { class: "big", "aria-hidden": "true" }, "⭐"),
+    el("div", { class: "praise" }, PRAISE[Math.floor(Math.random() * PRAISE.length)]),
+    el("div", { class: "count" }, "Dziś zebrane gwiazdki: " + "⭐".repeat(Math.min(stars, 10)) + (stars > 10 ? " ×" + stars : ""))));
+  box.hidden = false;
+  clearTimeout(cheer.t);
+  cheer.t = setTimeout(() => (box.hidden = true), 3200);
+}
+$("cheer").onclick = () => ($("cheer").hidden = true);
+
+// On Friday to Sunday the child sees next week's school cards, one row per day
+function renderWeek() {
+  const dow = new Date().getDay();
+  const panel = $("week-panel");
+  panel.hidden = ![5, 6, 0].includes(dow);
+  if (panel.hidden) return;
+  const mon = addDays(today(), dow === 0 ? 1 : 8 - dow);
+  const box = $("week"); box.replaceChildren();
+  for (let i = 0; i < 5; i++) {
+    const d = addDays(mon, i);
+    const ts = S.tasks.filter((t) => t.member_id === S.me.id && t.due_date === d).sort((a, b) => a.title.localeCompare(b.title));
+    const ul = el("ul", { class: "rows" });
+    if (!ts.length) ul.append(el("li", { class: "empty" }, "Nic z dziennika."));
+    for (const t of ts) ul.append(el("li", { class: "row" }, el("div", { class: "t" }, el("div", {}, t.title), t.details ? el("div", { class: "meta" }, t.details) : "")));
+    box.append(el("div", { class: "day" }, el("h4", {}, dayLabel(d)), ul));
+  }
 }
 
 // ---------- parent ----------
@@ -386,6 +479,7 @@ function renderSettings() {
     $("invite-link").textContent = inviteLink();
   }
   $("me-line").textContent = "Ten telefon należy do: " + (S.me ? S.me.name : "—");
+  $("switch-member").textContent = S.isParent ? "Zmień osobę na tym telefonie" : "Zmień osobę (rodzic)";
   renderSkins();
 }
 // ---------- skins: each member picks a look, remembered per person on this device ----------
@@ -396,7 +490,10 @@ const SKINS = [
   { id: "klocki", name: "Kolorowe klocki", sw: ["#FF5C8A", "#FFD23F"] },
   { id: "piksele", name: "Pikselowy świat", sw: ["#5DB548", "#8B5A2B"] },
   { id: "plac", name: "Klockowy plac", sw: ["#00A2FF", "#FF4D4D"] },
+  { id: "kotek", name: "Pastelowy kotek", sw: ["#FFB7CC", "#B79CE0"] },
+  { id: "ninja", name: "Wojownik ninja", sw: ["#E1261C", "#141414"] },
 ];
+const DARK = ["nocny", "ninja"];
 const skinKey = () => "dz-skin-" + (S.me ? S.me.id : "none");
 function skinOf() {
   let k = null;
@@ -407,7 +504,7 @@ function applySkin() {
   const k = skinOf(), link = $("skin-css"), root = document.documentElement;
   const href = k === "morski" ? "" : "themes/" + k + ".css";
   if (link.getAttribute("href") !== href) { if (href) link.setAttribute("href", href); else link.removeAttribute("href"); }
-  if (k === "morski") delete root.dataset.theme; else root.dataset.theme = k === "nocny" ? "dark" : "light";
+  if (k === "morski") delete root.dataset.theme; else root.dataset.theme = DARK.includes(k) ? "dark" : "light";
   try { localStorage.setItem("dz-skin", k); } catch {}
 }
 function renderSkins() {
@@ -420,7 +517,20 @@ function renderSkins() {
 }
 const inviteLink = () => location.origin + location.pathname + "?kod=" + S.family.invite_code;
 $("invite-copy").onclick = async () => { try { await navigator.clipboard.writeText(inviteLink()); toast("Skopiowano link."); } catch { toast("Skopiuj link ręcznie."); } };
-$("switch-member").onclick = () => { S.me = null; S.isParent = false; render(); };
+// Only a parent may change who uses this phone: a child's phone asks for the family code, which only parents can see
+const switchMember = () => { S.me = null; S.isParent = false; render(); };
+$("switch-member").onclick = () => {
+  if (S.isParent) return switchMember();
+  $("switch-lock").hidden = false; $("switch-hint").hidden = false; $("switch-code").focus();
+};
+$("switch-lock").addEventListener("submit", (e) => {
+  e.preventDefault();
+  const ok = S.family && $("switch-code").value.trim().toUpperCase() === String(S.family.invite_code).toUpperCase();
+  $("switch-code").value = "";
+  if (!ok) { toast("To nie jest kod rodziny. Poproś rodzica."); return; }
+  $("switch-lock").hidden = true; $("switch-hint").hidden = true;
+  switchMember();
+});
 
 function b64urlToUint8(s) { const p = "=".repeat((4 - (s.length % 4)) % 4); const b = atob((s + p).replace(/-/g, "+").replace(/_/g, "/")); return Uint8Array.from(b, (c) => c.charCodeAt(0)); }
 async function enablePush() {
@@ -451,7 +561,7 @@ async function handleUrlAction() {
   if (id && a && S.device) {
     const t = S.tasks.find((x) => x.id === id);
     if (t) {
-      if (a === "done" && (await act(t, "done"))) toast("Zadanie oznaczone jako wykonane.");
+      if (a === "done" && (await act(t, "done"))) cheer();
       if (a === "snooze20") { const ms = Date.now() + 20 * 60000; if (await act(t, "snoozed", ms)) toast("OK, wrócę do Ciebie o " + hm(ms) + "."); }
     }
   }

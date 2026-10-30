@@ -17,7 +17,7 @@
 <link rel="stylesheet" id="skin-css">
 <script>
 // Apply the last used skin before first paint; app.js then switches to the current person's choice
-try { const k = localStorage.getItem("dz-skin"); if (k && k !== "morski") { document.getElementById("skin-css").href = "themes/" + k + ".css"; document.documentElement.dataset.theme = k === "nocny" ? "dark" : "light"; } } catch {}
+try { const k = localStorage.getItem("dz-skin"); if (k && k !== "morski") { document.getElementById("skin-css").href = "themes/" + k + ".css"; document.documentElement.dataset.theme = k === "nocny" || k === "ninja" ? "dark" : "light"; } } catch {}
 </script>
 </head>
 <body>
@@ -66,6 +66,11 @@ try { const k = localStorage.getItem("dz-skin"); if (k && k !== "morski") { docu
   <section id="view-moje" hidden>
     <div id="notif-hint" class="note" hidden></div>
     <div id="focus-wrap"></div>
+    <div class="panel" id="week-panel" hidden>
+      <h3>Na przyszły tydzień</h3>
+      <p class="muted small">Zadania i sprawdziany z dziennika, dzień po dniu.</p>
+      <div id="week" class="week"></div>
+    </div>
     <div class="panel" id="later-panel" hidden>
       <h3>Odłożone</h3>
       <ul id="later" class="rows"></ul>
@@ -149,10 +154,31 @@ try { const k = localStorage.getItem("dz-skin"); if (k && k !== "morski") { docu
       <h2>Ten telefon</h2>
       <p class="muted small" id="me-line"></p>
       <button id="switch-member">Zmień osobę na tym telefonie</button>
+      <form id="switch-lock" class="inline" autocomplete="off" hidden>
+        <input id="switch-code" maxlength="6" placeholder="Kod rodziny" autocapitalize="characters" aria-label="Kod rodziny">
+        <button type="submit" class="primary">Zmień</button>
+      </form>
+      <p class="muted small" id="switch-hint" hidden>Osobę na tym telefonie zmienia rodzic: potrzebny jest kod rodziny z jego ustawień.</p>
     </div>
   </section>
 </div>
 <div id="toast" class="toast" role="status" hidden></div>
+<div id="cheer" class="cheer" role="status" hidden></div>
+<div id="ai" class="ai" role="dialog" aria-modal="true" aria-labelledby="ai-head" hidden>
+  <div class="ai-card">
+    <div class="ai-top">
+      <div><h2 id="ai-head">🤖 Pomocnik</h2><p class="muted small" id="ai-title"></p></div>
+      <button class="ghost" id="ai-close" aria-label="Zamknij pomocnika">✕</button>
+    </div>
+    <p class="note">Pomocnik nie poda gotowej odpowiedzi. Zada Ci pytania, żebyś sam/sama do niej doszedł/doszła. Miej przed sobą polecenie z zeszytu.</p>
+    <div id="ai-log" class="ai-log" aria-live="polite"></div>
+    <form id="ai-form" class="inline" autocomplete="off">
+      <input id="ai-input" maxlength="800" placeholder="Napisz odpowiedź albo pytanie" aria-label="Wiadomość do pomocnika">
+      <button type="submit" class="primary" id="ai-send">Wyślij</button>
+    </form>
+    <button class="ghost" id="ai-parent">Wolę zawołać rodzica</button>
+  </div>
+</div>
 <script src="config.js"></script>
 <script type="module" src="app.js"></script>
 </body>
