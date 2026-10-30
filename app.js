@@ -192,10 +192,18 @@ function focusCard(t, more) {
   const acts = el("div", { class: "actions" });
   acts.append(el("button", { class: "primary", onclick: async () => { if (await act(t, "done")) cheer(); } }, "Zrobione"));
   acts.append(el("button", { disabled: s === "doing", onclick: async () => { if (await act(t, "doing")) toast("OK, zadanie zostaje na ekranie."); } }, "Robię teraz"));
-  acts.append(el("button", { disabled: s === "help", onclick: async () => { if (await act(t, "help")) toast("Dałem znać, że potrzebujesz pomocy."); } }, "Potrzebuję pomocy"));
+  const help = el("button", { "aria-expanded": "false" }, "Potrzebuję pomocy");
+  acts.append(help);
   const later = el("button", { "aria-expanded": "false" }, "Przypomnij później");
   acts.append(later);
   card.append(acts);
+
+  // Help: the child chooses between calling a parent and the AI helper that guides with questions
+  const helpBox = el("div", { class: "helpbox", hidden: true },
+    el("button", { class: "primary", disabled: s === "help", onclick: async () => { if (await act(t, "help")) toast("Dałem znać rodzicowi, że potrzebujesz pomocy."); } }, s === "help" ? "Rodzic już wie" : "🙋 Pomoc rodzica"),
+    el("button", { onclick: () => openHelper(t) }, "🤖 Pomocnik AI"));
+  help.onclick = () => { helpBox.hidden = !helpBox.hidden; help.setAttribute("aria-expanded", String(!helpBox.hidden)); };
+  card.append(helpBox);
 
   const box = el("div", { class: "snooze", hidden: true });
   const snooze = async (ms) => { if (await act(t, "snoozed", ms)) toast("OK, wrócę do Ciebie o " + hm(ms) + "." + (t.due ? " Termin dalej: przed " + t5(t.due) + "." : "")); };
@@ -207,6 +215,48 @@ function focusCard(t, more) {
   if (more > 0) card.append(el("p", { class: "muted small" }, "Potem jeszcze " + more + (more === 1 ? " zadanie" : more < 5 ? " zadania" : " zadań") + ". Jedno naraz."));
   return card;
 }
+
+// ---------- AI helper (dz-pomocnik): asks guiding questions, never gives the answer ----------
+const chats = {};
+let helperTask = null;
+function openHelper(t) {
+  helperTask = t;
+  chats[t.id] ??= [];
+  $("ai-title").textContent = t.title;
+  $("ai").hidden = false;
+  renderChat();
+  if (!chats[t.id].length) askHelper();
+  else $("ai-input").focus();
+}
+function renderChat(busy = false) {
+  const box = $("ai-log"); box.replaceChildren();
+  for (const m of chats[helperTask.id]) box.append(el("p", { class: "msg " + (m.role === "user" ? "me" : "bot") }, m.content));
+  if (busy) box.append(el("p", { class: "msg bot typing" }, "Pomocnik myśli…"));
+  box.scrollTop = box.scrollHeight;
+  $("ai-send").disabled = busy;
+}
+async function askHelper() {
+  const t = helperTask, log = chats[t.id];
+  renderChat(true);
+  const { data, error } = await sb.functions.invoke("dz-pomocnik", { body: { task_id: t.id, messages: log } });
+  let msg = data?.reply;
+  if (error) { msg = null; try { const j = await error.context.json(); msg = j?.error; } catch {} msg = "⚠️ " + (msg || "Pomocnik chwilowo nie odpowiada. Spróbuj za chwilę albo poproś rodzica."); }
+  if (helperTask !== t) return;
+  if (error) { renderChat(); $("ai-log").append(el("p", { class: "msg err" }, msg)); return; }
+  log.push({ role: "assistant", content: msg });
+  renderChat();
+  $("ai-input").focus();
+}
+$("ai-form").addEventListener("submit", (e) => {
+  e.preventDefault();
+  const text = $("ai-input").value.trim();
+  if (!text || !helperTask) return;
+  $("ai-input").value = "";
+  chats[helperTask.id].push({ role: "user", content: text.slice(0, 800) });
+  askHelper();
+});
+$("ai-close").onclick = () => { $("ai").hidden = true; helperTask = null; };
+$("ai-parent").onclick = async () => { const t = helperTask; if (t && (await act(t, "help"))) { toast("Dałem znać rodzicowi, że potrzebujesz pomocy."); $("ai").hidden = true; helperTask = null; } };
 
 // Reward after "Zrobione": confetti, a random praise and today's star count; tap or wait to close
 const PRAISE = ["Super robota!", "Brawo, jedno z głowy!", "Mistrz zadań!", "Tak trzymać!", "Ekstra, zrobione!", "Jesteś niesamowity/a!"];

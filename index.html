@@ -164,6 +164,21 @@ try { const k = localStorage.getItem("dz-skin"); if (k && k !== "morski") { docu
 </div>
 <div id="toast" class="toast" role="status" hidden></div>
 <div id="cheer" class="cheer" role="status" hidden></div>
+<div id="ai" class="ai" role="dialog" aria-modal="true" aria-labelledby="ai-head" hidden>
+  <div class="ai-card">
+    <div class="ai-top">
+      <div><h2 id="ai-head">🤖 Pomocnik</h2><p class="muted small" id="ai-title"></p></div>
+      <button class="ghost" id="ai-close" aria-label="Zamknij pomocnika">✕</button>
+    </div>
+    <p class="note">Pomocnik nie poda gotowej odpowiedzi. Zada Ci pytania, żebyś sam/sama do niej doszedł/doszła. Miej przed sobą polecenie z zeszytu.</p>
+    <div id="ai-log" class="ai-log" aria-live="polite"></div>
+    <form id="ai-form" class="inline" autocomplete="off">
+      <input id="ai-input" maxlength="800" placeholder="Napisz odpowiedź albo pytanie" aria-label="Wiadomość do pomocnika">
+      <button type="submit" class="primary" id="ai-send">Wyślij</button>
+    </form>
+    <button class="ghost" id="ai-parent">Wolę zawołać rodzica</button>
+  </div>
+</div>
 <script src="config.js"></script>
 <script type="module" src="app.js"></script>
 </body>

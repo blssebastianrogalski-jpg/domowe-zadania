@@ -22,3 +22,8 @@ Push działa na iOS 16.4+ tylko po dodaniu aplikacji do ekranu początkowego (Sa
 ## Wygląd
 - Każdy domownik wybiera wygląd w Ustawieniach (Morski, Ciepły poranek, Nocny granat, Kolorowe klocki, Pikselowy świat, Klockowy plac, Pastelowy kotek, Wojownik ninja). Wybór zapamiętuje telefon osobno dla każdej osoby; domyślnie rodzic ma Morski, dziecko Kolorowe klocki.
 - Każdy wygląd to plik w `themes/`, ładowany po `styles.css` i nadpisujący jego kolory, czcionki i kształty.
+
+## Pomocnik AI
+- „Potrzebuję pomocy” daje wybór: pomoc rodzica (jak dotąd) albo Pomocnik AI. Pomocnik prowadzi dziecko pytaniami i nie podaje gotowej odpowiedzi.
+- Funkcja `supabase/functions/dz-pomocnik` (wdrażana z wyłączoną weryfikacją JWT; zadanie czyta tokenem dziecka przez RLS, więc obce zadania są niewidoczne) woła Claude API. Klucz `ANTHROPIC_API_KEY` ustawia się w Supabase → Edge Functions → Secrets; bez niego Pomocnik odpowiada, że nie jest włączony.
+- Limity na rozmowę: 30 wiadomości, 800 znaków na wiadomość.
