@@ -207,7 +207,7 @@ function focusCard(t, more) {
 
   const box = el("div", { class: "snooze", hidden: true });
   const snooze = async (ms) => { if (await act(t, "snoozed", ms)) toast("OK, wrócę do Ciebie o " + hm(ms) + "." + (t.due ? " Termin dalej: przed " + t5(t.due) + "." : "")); };
-  for (const m of [10, 20, 30]) box.append(el("button", { onclick: () => snooze(Date.now() + m * 60000) }, "za " + m + " min"));
+  for (const m of [15, 30]) box.append(el("button", { onclick: () => snooze(Date.now() + m * 60000) }, "za " + m + " min"));
   const at = el("input", { type: "time", id: "snooze-at", "aria-label": "O wybranej godzinie" });
   box.append(at, el("button", { onclick: () => { if (!at.value) { at.focus(); return; } const [h, mi] = at.value.split(":").map(Number); const d = new Date(); d.setHours(h, mi, 0, 0); if (d.getTime() <= Date.now()) d.setDate(d.getDate() + 1); snooze(d.getTime()); } }, "Ustaw"));
   later.onclick = () => { box.hidden = !box.hidden; later.setAttribute("aria-expanded", String(!box.hidden)); };
@@ -553,7 +553,7 @@ async function enablePush() {
 }
 $("notif-on").onclick = enablePush;
 
-// Actions from a tapped notification: ?task=<id>&a=done|snooze20
+// Actions from a tapped notification: ?task=<id>&a=done|snooze15 (snooze20 kept for notifications sent before the change)
 async function handleUrlAction() {
   const p = new URLSearchParams(location.search);
   const code = p.get("kod"); if (code && !S.device) $("join-code").value = code;
@@ -562,7 +562,8 @@ async function handleUrlAction() {
     const t = S.tasks.find((x) => x.id === id);
     if (t) {
       if (a === "done" && (await act(t, "done"))) cheer();
-      if (a === "snooze20") { const ms = Date.now() + 20 * 60000; if (await act(t, "snoozed", ms)) toast("OK, wrócę do Ciebie o " + hm(ms) + "."); }
+      const snoozeMin = { snooze15: 15, snooze20: 20 }[a];
+      if (snoozeMin) { const ms = Date.now() + snoozeMin * 60000; if (await act(t, "snoozed", ms)) toast("OK, wrócę do Ciebie o " + hm(ms) + "."); }
     }
   }
   if (id || code) history.replaceState(null, "", location.pathname + location.hash);
