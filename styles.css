@@ -144,7 +144,7 @@ details summary{cursor:pointer;color:var(--muted);font-size:.9rem}
 .sect > summary::after{content:"▾";margin-left:auto;color:var(--muted);transition:transform .15s}
 .sect[open] > summary::after{transform:rotate(180deg)}
 .sect > .rows{margin-top:10px}
-.sect .badge{display:inline-flex;align-items:center;justify-content:center;min-width:28px;height:26px;padding:0 9px;border-radius:999px;background:var(--help);color:var(--surface);font-family:var(--f-body);font-size:.85rem;font-weight:700;font-variant-numeric:tabular-nums}
+.sect .badge{display:inline-flex;align-items:center;justify-content:center;min-width:28px;height:26px;padding:0 9px;border-radius:999px;background:var(--accent);color:var(--accent-ink);font-family:var(--f-body);font-size:.85rem;font-weight:700;font-variant-numeric:tabular-nums}
 .sect[open] .badge{display:none}
 .sect .sect-sum{font-family:var(--f-body);font-weight:400;font-size:.8rem;color:var(--muted)}
 .sect:not([open]) .sect-sum{display:none}
