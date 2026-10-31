@@ -207,7 +207,7 @@ function focusCard(t, more) {
 
   const box = el("div", { class: "snooze", hidden: true });
   const snooze = async (ms) => { if (await act(t, "snoozed", ms)) toast("OK, wrócę do Ciebie o " + hm(ms) + "." + (t.due ? " Termin dalej: przed " + t5(t.due) + "." : "")); };
-  for (const m of [10, 20, 30]) box.append(el("button", { onclick: () => snooze(Date.now() + m * 60000) }, "za " + m + " min"));
+  for (const m of [10, 15, 20, 30]) box.append(el("button", { onclick: () => snooze(Date.now() + m * 60000) }, "za " + m + " min"));
   const at = el("input", { type: "time", id: "snooze-at", "aria-label": "O wybranej godzinie" });
   box.append(at, el("button", { onclick: () => { if (!at.value) { at.focus(); return; } const [h, mi] = at.value.split(":").map(Number); const d = new Date(); d.setHours(h, mi, 0, 0); if (d.getTime() <= Date.now()) d.setDate(d.getDate() + 1); snooze(d.getTime()); } }, "Ustaw"));
   later.onclick = () => { box.hidden = !box.hidden; later.setAttribute("aria-expanded", String(!box.hidden)); };
