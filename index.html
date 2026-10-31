@@ -66,6 +66,7 @@ try { const k = localStorage.getItem("dz-skin"); if (k && k !== "morski") { docu
   <section id="view-moje" hidden>
     <div id="notif-hint" class="note" hidden></div>
     <div id="focus-wrap"></div>
+    <div id="my-sections" class="sects"></div>
     <div class="panel" id="week-panel" hidden>
       <h3>Na przyszły tydzień</h3>
       <p class="muted small">Zadania i sprawdziany z dziennika, dzień po dniu.</p>
@@ -74,10 +75,6 @@ try { const k = localStorage.getItem("dz-skin"); if (k && k !== "morski") { docu
     <div class="panel" id="later-panel" hidden>
       <h3>Odłożone</h3>
       <ul id="later" class="rows"></ul>
-    </div>
-    <div class="panel" id="done-panel" hidden>
-      <h3>Zrobione dzisiaj</h3>
-      <ul id="done" class="rows"></ul>
     </div>
   </section>
 
