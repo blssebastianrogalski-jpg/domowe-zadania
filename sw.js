@@ -1,5 +1,5 @@
 // Service worker: app-shell cache + push notifications
-const CACHE = "dz-v7";
+const CACHE = "dz-v8";
 const SHELL = ["./", "index.html", "styles.css", "app.js", "config.js", "manifest.webmanifest", "icons/icon-192.png",
   "themes/cieply.css", "themes/nocny.css", "themes/klocki.css", "themes/piksele.css", "themes/plac.css", "themes/kotek.css", "themes/ninja.css"];
 

@@ -31,6 +31,14 @@ function dayLabel(day) {
 }
 const sortKey = (t) => (t.due_date || today()) + (t5(t.due) || "99");
 const memberName = (id) => (S.members.find((m) => m.id === id) || {}).name || "Ktoś";
+// "Wszystkie dzieci" w liście „Dla kogo”: jedno wpisanie tworzy osobną kartę dla każdego dziecka.
+const ALL_KIDS = "__all_kids";
+const childIds = () => S.members.filter((m) => m.role === "child").map((m) => m.id);
+function namesList(ids) {
+  const n = ids.map(memberName);
+  return n.length > 1 ? n.slice(0, -1).join(", ") + " i " + n[n.length - 1] : n.join("");
+}
+const kidsLabel = (ids) => ids.length <= 3 ? namesList(ids) + " razem" : "Wszystkie dzieci (" + ids.length + ")";
 
 function toast(msg) { const el = $("toast"); el.textContent = msg; el.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(() => (el.hidden = true), 4500); }
 function el(tag, props = {}, ...kids) {
@@ -342,6 +350,8 @@ function renderRodzic() {
     ml.append(el("li", { class: "row" }, el("div", { class: "t" }, m.name, el("span", { class: "meta" }, m.role === "parent" ? "  · rodzic" : "  · wykonuje zadania")), acts));
     sel.append(el("option", { value: m.id }, m.name));
   }
+  const kids = childIds();
+  if (kids.length >= 2) sel.append(el("option", { value: ALL_KIDS }, kidsLabel(kids)));
   if (keep) sel.value = keep; else { const firstChild = S.members.find((m) => m.role === "child"); if (firstChild) sel.value = firstChild.id; }
   renderSchool();
 }
@@ -453,13 +463,16 @@ $("m-form").addEventListener("submit", async (e) => {
 
 $("add-form").addEventListener("submit", async (e) => {
   e.preventDefault();
-  const title = $("f-title").value.trim(), member_id = $("f-member").value;
-  if (!title || !member_id) { toast("Wpisz polecenie i wybierz osobę."); return; }
+  const title = $("f-title").value.trim(), who = $("f-member").value;
+  if (!title || !who) { toast("Wpisz polecenie i wybierz osobę."); return; }
+  const ids = who === ALL_KIDS ? childIds() : [who];
+  if (!ids.length) { toast("Wybierz osobę."); return; }
   const steps = $("f-steps").value.split("\n").map((s) => s.trim()).filter(Boolean).slice(0, 8);
-  const { error } = await sb.from("dz_tasks").insert({ family_id: S.family.id, member_id, title, steps, due: $("f-due").value || null, remind_at: $("f-remind").value || null, repeat: $("f-repeat").checked ? "daily" : "once", status: "todo", status_day: today() });
+  const base = { family_id: S.family.id, title, steps, due: $("f-due").value || null, remind_at: $("f-remind").value || null, repeat: $("f-repeat").checked ? "daily" : "once", status: "todo", status_day: today() };
+  const { error } = await sb.from("dz_tasks").insert(ids.map((member_id) => ({ ...base, member_id })));
   if (error) { toast(errMsg(error)); return; }
   $("f-title").value = ""; $("f-steps").value = "";
-  await loadAll(); render(); toast("Dodano zadanie dla: " + memberName(member_id) + ".");
+  await loadAll(); render(); toast("Dodano zadanie dla: " + namesList(ids) + ".");
 });
 
 // ---------- settings & push ----------
