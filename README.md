@@ -27,3 +27,11 @@ Push działa na iOS 16.4+ tylko po dodaniu aplikacji do ekranu początkowego (Sa
 - „Potrzebuję pomocy” daje wybór: pomoc rodzica (jak dotąd) albo Pomocnik AI. Pomocnik prowadzi dziecko pytaniami i nie podaje gotowej odpowiedzi.
 - Funkcja `supabase/functions/dz-pomocnik` (wdrażana z wyłączoną weryfikacją JWT; zadanie czyta tokenem dziecka przez RLS, więc obce zadania są niewidoczne) woła Claude API. Klucz `ANTHROPIC_API_KEY` ustawia się w Supabase → Edge Functions → Secrets; bez niego Pomocnik odpowiada, że nie jest włączony.
 - Limity na rozmowę: 30 wiadomości, 800 znaków na wiadomość.
+
+## Budzik
+- Rodzic w widoku „Dla rodzica” → „⏰ Budziki” ustawia godzinę, dni, dziecko i sposób wyłączania (matematyka łatwa / do 100 / tabliczka mnożenia albo przepisanie losowego kodu, 2–5 zadań). Może budzik wyłączyć, zmienić i usunąć.
+- Dziecko nie może zmienić ani usunąć budzika (RLS: zapis w `dz_alarms` tylko dla rodzica). Wyłącza go tylko funkcja `dz_alarm_answer`, która sprawdza odpowiedzi na serwerze; odpowiedzi leżą w `dz_alarm_rings` bez dostępu z przeglądarki. Zła odpowiedź daje nowe zadanie.
+- `dz-reminders` wysyła push do dziecka co minutę od ustawionej godziny, aż zadania będą rozwiązane (najdłużej 60 min), a po 15 minutach raz powiadamia rodziców.
+- Po otwarciu aplikacji: pełny ekran, głośny sygnał (Web Audio, na iPhonie tryb „playback”, żeby grał mimo przełącznika wyciszenia), wibracje na Androidzie, ekran nie gaśnie.
+- Ograniczenia PWA: przy zablokowanym telefonie słychać tylko zwykły dźwięk powiadomienia, raz na minutę. Głośny alarm gra dopiero po otwarciu aplikacji (przeglądarka wymaga stuknięcia). Tryb „Nie przeszkadzać” / skupienie wycisza powiadomienia.
+- Migracja: `supabase/migrations/004_dz_budzik.sql`.

@@ -72,6 +72,11 @@ try { const k = localStorage.getItem("dz-skin"); if (k && k !== "morski") { docu
       <p class="muted small">Zadania i sprawdziany z dziennika, dzień po dniu.</p>
       <div id="week" class="week"></div>
     </div>
+    <div class="panel" id="my-alarms-panel" hidden>
+      <h3>⏰ Mój budzik</h3>
+      <ul id="my-alarms" class="rows"></ul>
+      <p class="muted small">Budzik ustawia rodzic. Wyłączysz go, gdy zadzwoni, rozwiązując kilka zadań.</p>
+    </div>
     <div class="panel" id="later-panel" hidden>
       <h3>Odłożone</h3>
       <ul id="later" class="rows"></ul>
@@ -112,6 +117,29 @@ try { const k = localStorage.getItem("dz-skin"); if (k && k !== "morski") { docu
         <textarea id="f-steps" rows="3" placeholder="worek z kuchni&#10;do altany&#10;nowy worek"></textarea>
       </label>
       <button type="submit" class="primary">Dodaj zadanie</button>
+    </form>
+    <form class="panel" id="alarm-form" autocomplete="off">
+      <h2>⏰ Budziki</h2>
+      <p class="muted small">Dziecko nie zmieni ani nie usunie budzika. Wyłączy go dopiero, gdy rozwiąże zadania na ekranie. Telefon dziecka dostaje powiadomienie co minutę, dopóki tego nie zrobi (najdłużej godzinę). Jeśli po 15 minutach dalej dzwoni, dostaniesz znać.</p>
+      <ul id="alarms" class="rows"></ul>
+      <h3 id="a-head">Nowy budzik</h3>
+      <div class="grid3">
+        <label>Dla kogo<select id="a-member" required></select></label>
+        <label>Godzina<input id="a-at" type="time" value="07:00" required></label>
+        <label>Ile zadań<select id="a-problems"><option value="2">2</option><option value="3" selected>3</option><option value="5">5</option></select></label>
+      </div>
+      <fieldset class="days" id="a-days"><legend>Dni</legend></fieldset>
+      <label>Jak wyłączyć<select id="a-kind">
+        <option value="math:1">Matematyka łatwa (dodawanie i odejmowanie do 20)</option>
+        <option value="math:2">Matematyka średnia (do 100)</option>
+        <option value="math:3">Tabliczka mnożenia i dzielenie</option>
+        <option value="code:1">Przepisz losowy kod (dla młodszych)</option>
+      </select></label>
+      <div class="inline">
+        <button type="submit" class="primary" id="a-save">Ustaw budzik</button>
+        <button type="button" class="ghost" id="a-cancel" hidden>Anuluj zmiany</button>
+      </div>
+      <p class="muted small">Na telefonie dziecka muszą być włączone powiadomienia (⚙ Ustawienia), a na iPhonie aplikacja musi być dodana do ekranu początkowego. Dźwięk powiadomienia to zwykły dźwięk telefonu. Głośny alarm gra dopiero po otwarciu aplikacji.</p>
     </form>
     <div class="panel" id="school-panel">
       <h2>Dziennik eduVULCAN</h2>
@@ -174,6 +202,21 @@ try { const k = localStorage.getItem("dz-skin"); if (k && k !== "morski") { docu
       <button type="submit" class="primary" id="ai-send">Wyślij</button>
     </form>
     <button class="ghost" id="ai-parent">Wolę zawołać rodzica</button>
+  </div>
+</div>
+<div id="alarm" class="alarm" role="alertdialog" aria-modal="true" aria-labelledby="al-head" hidden>
+  <div class="alarm-card">
+    <div class="al-time" id="al-time"></div>
+    <h2 id="al-head">Pobudka!</h2>
+    <p class="al-sub" id="al-sub">Rozwiąż zadania, żeby wyłączyć budzik.</p>
+    <div class="al-dots" id="al-dots" aria-hidden="true"></div>
+    <p class="al-progress" id="al-progress"></p>
+    <div class="al-q" id="al-q" aria-live="polite"></div>
+    <form id="al-form" class="al-form" autocomplete="off">
+      <input id="al-input" aria-label="Twoja odpowiedź" autocomplete="off" autocorrect="off" spellcheck="false">
+      <button type="submit" class="primary" id="al-ok">Sprawdź</button>
+    </form>
+    <p class="al-msg" id="al-msg" role="status"></p>
   </div>
 </div>
 <script src="config.js"></script>
