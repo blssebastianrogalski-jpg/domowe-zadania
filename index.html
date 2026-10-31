@@ -76,6 +76,8 @@ try { const k = localStorage.getItem("dz-skin"); if (k && k !== "morski") { docu
       <h3>⏰ Mój budzik</h3>
       <ul id="my-alarms" class="rows"></ul>
       <p class="muted small">Budzik ustawia rodzic. Wyłączysz go, gdy zadzwoni, rozwiązując kilka zadań.</p>
+      <div class="inline" id="my-alarm-acts"></div>
+      <p class="muted small">Tryb nocny: przed snem stuknij go i zostaw telefon na ładowarce z otwartą aplikacją. Ekran będzie ciemny, a budzik zadzwoni o czasie głośno, nawet gdy telefon jest wyciszony.</p>
     </div>
     <div class="panel" id="later-panel" hidden>
       <h3>Odłożone</h3>
@@ -139,7 +141,7 @@ try { const k = localStorage.getItem("dz-skin"); if (k && k !== "morski") { docu
         <button type="submit" class="primary" id="a-save">Ustaw budzik</button>
         <button type="button" class="ghost" id="a-cancel" hidden>Anuluj zmiany</button>
       </div>
-      <p class="muted small">Na telefonie dziecka muszą być włączone powiadomienia (⚙ Ustawienia), a na iPhonie aplikacja musi być dodana do ekranu początkowego. Dźwięk powiadomienia to zwykły dźwięk telefonu. Głośny alarm gra dopiero po otwarciu aplikacji.</p>
+      <p class="muted small">Na telefonie dziecka muszą być włączone powiadomienia (⚙ Ustawienia), a na iPhonie aplikacja musi być dodana do ekranu początkowego. Przy zablokowanym telefonie dzwoni zwykły dźwięk powiadomienia, wyciszony telefon go nie zagra. Żeby budzik zadzwonił głośno mimo wyciszenia, dziecko przed snem włącza „🌙 Tryb nocny” w swoich zadaniach i zostawia telefon na ładowarce. Głośność alarmu to głośność multimediów telefonu.</p>
     </form>
     <div class="panel" id="school-panel">
       <h2>Dziennik eduVULCAN</h2>
@@ -203,6 +205,12 @@ try { const k = localStorage.getItem("dz-skin"); if (k && k !== "morski") { docu
     </form>
     <button class="ghost" id="ai-parent">Wolę zawołać rodzica</button>
   </div>
+</div>
+<div id="night" class="night" hidden>
+  <div class="nt-clock" id="nt-clock"></div>
+  <p class="nt-next" id="nt-next"></p>
+  <p class="nt-hint">Zostaw telefon na ładowarce. Nie zamykaj aplikacji.</p>
+  <button class="nt-off" id="nt-off">Wyjdź z trybu nocnego</button>
 </div>
 <div id="alarm" class="alarm" role="alertdialog" aria-modal="true" aria-labelledby="al-head" hidden>
   <div class="alarm-card">

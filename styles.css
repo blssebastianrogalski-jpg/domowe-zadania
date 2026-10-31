@@ -183,3 +183,9 @@ html.ringing,html.ringing body{overflow:hidden}
 }
 @keyframes alarm-pulse{50%{transform:scale(1.06)}}
 @keyframes alarm-shake{20%,60%{transform:translateX(-10px)}40%,80%{transform:translateX(10px)}}
+/* night mode: dark clock while the app waits for the alarm on the charger */
+.night{position:fixed;inset:0;z-index:35;background:#000;color:#6E6A80;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:24px;text-align:center}
+.nt-clock{font-family:var(--f-display);font-size:clamp(4rem,22vw,7rem);font-weight:700;font-variant-numeric:tabular-nums;color:#8A84A3;line-height:1}
+.nt-next{font-size:1.1rem}
+.nt-hint{font-size:.85rem;opacity:.7}
+.night .nt-off{margin-top:24px;background:transparent;border:1px solid #2A2833;color:#6E6A80}

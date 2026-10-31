@@ -208,6 +208,9 @@ function renderMoje() {
   const mineA = S.alarms.filter((a) => a.member_id === S.me.id && a.enabled);
   $("my-alarms-panel").hidden = !mineA.length;
   $("my-alarms").replaceChildren(...mineA.map((a) => el("li", { class: "row" }, el("div", { class: "t" }, el("div", { class: "al-row-time" }, t5(a.at)), el("div", { class: "meta" }, daysLabel(a.days) + " · " + kindLabel(a))))));
+  $("my-alarm-acts").replaceChildren(
+    el("button", { class: "primary", onclick: nightOn }, "🌙 Tryb nocny"),
+    el("button", { onclick: testSound }, "🔊 Sprawdź głośność"));
 }
 
 function focusCard(t, more) {
@@ -488,26 +491,103 @@ async function removeAlarm(a) {
   if (error) toast(errMsg(error)); else { if (editingAlarm?.id === a.id) stopEditing(); await loadAll(); render(); toast("Usunięto budzik."); }
 }
 
-// Loud ring while the app is open. Browsers start sound only after a tap, so the first tap anywhere turns it on.
+// Loud ring while the app is open. It plays through an <audio> element (media), not Web Audio, because on an iPhone
+// media plays even with the silent switch on, while Web Audio stays muted. Its loudness is the phone's media volume:
+// the browser cannot raise it above that. Browsers start sound only after a tap, so any tap on the ring screen retries.
+function wavBlob(seconds, sample) {
+  const rate = 22050, n = Math.round(rate * seconds), buf = new ArrayBuffer(44 + n * 2), v = new DataView(buf);
+  const str = (o, x) => { for (let i = 0; i < x.length; i++) v.setUint8(o + i, x.charCodeAt(i)); };
+  str(0, "RIFF"); v.setUint32(4, 36 + n * 2, true); str(8, "WAVEfmt "); v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+  v.setUint32(24, rate, true); v.setUint32(28, rate * 2, true); v.setUint16(32, 2, true); v.setUint16(34, 16, true); str(36, "data"); v.setUint32(40, n * 2, true);
+  for (let i = 0; i < n; i++) v.setInt16(44 + i * 2, Math.max(-1, Math.min(1, sample(i / rate))) * 32767, true);
+  return URL.createObjectURL(new Blob([buf], { type: "audio/wav" }));
+}
+// 4 piercing beeps (2.6 / 3.2 kHz, where phone speakers and ears are loudest), short pause, full scale square wave
+function alarmSample(t) {
+  const k = Math.floor(t / 0.2), inBeep = t - k * 0.2;
+  if (k >= 4 || inBeep > 0.16) return 0;
+  const f = k % 2 ? 3200 : 2600, edge = Math.min(1, inBeep / 0.004, (0.16 - inBeep) / 0.004);
+  return (Math.sin(2 * Math.PI * f * t) >= 0 ? 0.98 : -0.98) * edge;
+}
 const Ring = {
-  ctx: null, timer: null, n: 0,
+  audio: null, urls: null, timer: null, armed: false,
+  el() {
+    if (!this.audio) {
+      this.urls = { alarm: wavBlob(1.15, alarmSample), silent: wavBlob(1, () => 0) };
+      this.audio = new Audio(); this.audio.loop = true; this.audio.preload = "auto"; this.audio.setAttribute("playsinline", "");
+    }
+    return this.audio;
+  },
+  play(url) {
+    try { if (navigator.audioSession) navigator.audioSession.type = "playback"; } catch {}
+    const a = this.el();
+    if (a.src !== this.urls[url]) a.src = this.urls[url];
+    a.volume = 1;
+    return a.play().catch(() => {});
+  },
   start() {
-    try { if (navigator.audioSession) navigator.audioSession.type = "playback"; } catch {} // iPhone: play despite the silent switch
-    try { this.ctx ??= new (window.AudioContext || window.webkitAudioContext)(); this.ctx.resume(); } catch {}
-    if (this.timer) return;
-    this.timer = setInterval(() => this.tick(), 220);
+    this.play("alarm");
+    if (!this.timer) this.timer = setInterval(() => { try { navigator.vibrate?.([700, 300, 700]); } catch {} }, 1700);
   },
-  tick() {
-    const c = this.ctx, step = this.n++ % 8;
-    if (step === 0) try { navigator.vibrate?.([600, 200, 600]); } catch {}
-    if (!c || c.state !== "running" || step > 3) return; // 4 beeps, short pause
-    const o = c.createOscillator(), g = c.createGain(), t = c.currentTime;
-    o.type = "square"; o.frequency.value = step % 2 ? 1320 : 990;
-    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.6, t + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.18);
-    o.connect(g).connect(c.destination); o.start(t); o.stop(t + 0.2);
+  // Night mode: started by a tap, keeps the audio element playing silence so it may ring later without another tap
+  arm() { this.armed = true; this.play("silent"); },
+  disarm() { this.armed = false; if (!this.timer) this.audio?.pause(); },
+  stop() {
+    clearInterval(this.timer); this.timer = null;
+    try { navigator.vibrate?.(0); } catch {}
+    if (this.armed) this.play("silent"); else this.audio?.pause();
   },
-  stop() { clearInterval(this.timer); this.timer = null; try { navigator.vibrate?.(0); } catch {} },
 };
+let testT = null;
+function testSound() {
+  if (AL.alarm) return;
+  Ring.play("alarm"); clearTimeout(testT);
+  testT = setTimeout(() => { if (!AL.alarm) Ring.stop(); }, 3000);
+  toast("Tak głośno zadzwoni budzik. Za cicho? Podgłoś telefon przyciskami głośności.");
+}
+
+// Night mode: the app stays open on the charger with a dark clock and rings at the exact time, even on silent
+const nextAlarm = () => {
+  if (!S.me) return null;
+  const now = new Date(), cur = now.getHours() * 60 + now.getMinutes();
+  let best = null;
+  for (const a of S.alarms.filter((x) => x.member_id === S.me.id && x.enabled)) for (let i = 0; i < 8; i++) {
+    const dow = (now.getDay() + i) % 7;
+    if (!a.days.includes(dow) || (i === 0 && (toMin(a.at) <= cur || a.dismissed_day === today()))) continue;
+    const mins = i * 1440 + toMin(a.at) - cur;
+    if (!best || mins < best.mins) best = { a, mins, i };
+    break;
+  }
+  return best;
+};
+const NIGHT = { on: false, lock: null, timer: null };
+async function nightOn() {
+  NIGHT.on = true;
+  Ring.arm();
+  $("night").hidden = false;
+  document.documentElement.classList.add("ringing");
+  renderNight();
+  clearInterval(NIGHT.timer); NIGHT.timer = setInterval(renderNight, 15000);
+  document.documentElement.requestFullscreen?.().catch(() => {});
+  try { NIGHT.lock = await navigator.wakeLock?.request("screen"); } catch {}
+}
+function nightOff() {
+  NIGHT.on = false; clearInterval(NIGHT.timer);
+  Ring.disarm();
+  try { NIGHT.lock?.release(); } catch {} NIGHT.lock = null;
+  $("night").hidden = true;
+  if (!AL.alarm) document.documentElement.classList.remove("ringing");
+  try { if (document.fullscreenElement) document.exitFullscreen(); } catch {}
+}
+function renderNight() {
+  if (!NIGHT.on) return;
+  $("nt-clock").textContent = hm(Date.now());
+  const n = nextAlarm();
+  $("nt-next").textContent = n ? "Budzik: " + (n.i === 0 ? "dziś" : n.i === 1 ? "jutro" : WD[(new Date().getDay() + n.i) % 7]) + " o " + t5(n.a.at) : "Brak włączonego budzika.";
+}
+$("nt-off").onclick = nightOff;
+// The wake lock drops when the page is hidden; take it again when the child comes back
+document.addEventListener("visibilitychange", async () => { if (NIGHT.on && !document.hidden) { try { NIGHT.lock = await navigator.wakeLock?.request("screen"); } catch {} } });
 
 const AL = { alarm: null, busy: false, lock: null };
 async function checkAlarm() {
@@ -572,6 +652,7 @@ async function finishAlarm(solved) {
   if (!a) return;
   const mine = S.alarms.find((x) => x.id === a.id);
   if (mine) { mine.dismissed_day = today(); mine.dismissed_at = new Date().toISOString(); }
+  if (NIGHT.on) nightOff();
   if (solved) morning();
   render();
 }

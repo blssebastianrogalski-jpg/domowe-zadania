@@ -32,6 +32,8 @@ Push działa na iOS 16.4+ tylko po dodaniu aplikacji do ekranu początkowego (Sa
 - Rodzic w widoku „Dla rodzica” → „⏰ Budziki” ustawia godzinę, dni, dziecko i sposób wyłączania (matematyka łatwa / do 100 / tabliczka mnożenia albo przepisanie losowego kodu, 2–5 zadań). Może budzik wyłączyć, zmienić i usunąć.
 - Dziecko nie może zmienić ani usunąć budzika (RLS: zapis w `dz_alarms` tylko dla rodzica). Wyłącza go tylko funkcja `dz_alarm_answer`, która sprawdza odpowiedzi na serwerze; odpowiedzi leżą w `dz_alarm_rings` bez dostępu z przeglądarki. Zła odpowiedź daje nowe zadanie.
 - `dz-reminders` wysyła push do dziecka co minutę od ustawionej godziny, aż zadania będą rozwiązane (najdłużej 60 min), a po 15 minutach raz powiadamia rodziców.
-- Po otwarciu aplikacji: pełny ekran, głośny sygnał (Web Audio, na iPhonie tryb „playback”, żeby grał mimo przełącznika wyciszenia), wibracje na Androidzie, ekran nie gaśnie.
+- Po otwarciu aplikacji: pełny ekran, głośny sygnał (2,6/3,2 kHz, pełna skala, generowany WAV w elemencie `<audio>`, bo na iPhonie media grają mimo przełącznika wyciszenia, a Web Audio nie), wibracje na Androidzie, ekran nie gaśnie. Głośność = głośność multimediów telefonu; przeglądarka nie podgłośni ponad nią.
+- „🌙 Tryb nocny” u dziecka: przed snem stuknięcie odblokowuje dźwięk (cisza w pętli), ekran jest czarny z zegarem i nie gaśnie (Wake Lock). O czasie budzik dzwoni w aplikacji bez kolejnego stuknięcia, także na wyciszonym telefonie. Wymaga otwartej aplikacji i ładowarki.
+- „🔊 Sprawdź głośność” gra sygnał przez 3 sekundy.
 - Ograniczenia PWA: przy zablokowanym telefonie słychać tylko zwykły dźwięk powiadomienia, raz na minutę. Głośny alarm gra dopiero po otwarciu aplikacji (przeglądarka wymaga stuknięcia). Tryb „Nie przeszkadzać” / skupienie wycisza powiadomienia.
 - Migracja: `supabase/migrations/004_dz_budzik.sql`.
