@@ -3,7 +3,7 @@ import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 const CFG = window.DZ_CONFIG;
 const sb = createClient(CFG.supabaseUrl, CFG.supabaseAnonKey, { auth: { persistSession: true, autoRefreshToken: true } });
 const $ = (id) => document.getElementById(id);
-const S = { uid: null, device: null, family: null, members: [], tasks: [], tally: {}, me: null, isParent: false, school: null };
+const S = { uid: null, device: null, family: null, members: [], tasks: [], tally: {}, alarms: [], me: null, isParent: false, school: null };
 
 // ---------- small helpers ----------
 const pad = (n) => String(n).padStart(2, "0");
@@ -61,12 +61,15 @@ async function loadAll() {
   if (!dev) { S.family = null; return; }
   const fid = dev.family_id;
   const since = new Date(); since.setDate(since.getDate() - 7);
-  const [fam, mem, tasks, tally] = await Promise.all([
+  const [fam, mem, tasks, tally, alarms] = await Promise.all([
     sb.from("dz_families").select("*").eq("id", fid).single(),
     sb.from("dz_members").select("*").eq("family_id", fid).order("created_at"),
     sb.from("dz_tasks").select("*").eq("family_id", fid),
     sb.from("dz_tally").select("*").eq("family_id", fid).gte("day", dayOf(since)),
+    sb.from("dz_alarms").select("*").eq("family_id", fid).order("at"),
   ]);
+  // Before the 004 migration runs the table is missing: the app keeps working without alarms
+  S.alarms = alarms.data || [];
   S.family = fam.data; S.members = mem.data || []; S.tasks = tasks.data || [];
   S.tally = Object.fromEntries((tally.data || []).map((r) => [r.day, r.count]));
   S.me = S.members.find((m) => m.id === dev.member_id) || null;
@@ -79,7 +82,7 @@ function subscribe() {
   const fid = S.device.family_id;
   const reload = debounce(async () => { await loadAll(); render(); }, 300);
   channel = sb.channel("family-" + fid);
-  for (const table of ["dz_tasks", "dz_tally", "dz_members"]) channel.on("postgres_changes", { event: "*", schema: "public", table, filter: "family_id=eq." + fid }, reload);
+  for (const table of ["dz_tasks", "dz_tally", "dz_members", "dz_alarms"]) channel.on("postgres_changes", { event: "*", schema: "public", table, filter: "family_id=eq." + fid }, reload);
   channel.subscribe();
   document.addEventListener("visibilitychange", () => { if (!document.hidden) reload(); });
   setInterval(() => { if (!document.hidden) reload(); }, 60000);
@@ -117,6 +120,7 @@ function render() {
   if (v === "moje") renderMoje();
   if (v === "rodzic") renderRodzic();
   if (v === "ustawienia") renderSettings();
+  checkAlarm();
 }
 setInterval(() => { if (!document.hidden && view() === "moje") render(); }, 20000);
 
@@ -201,6 +205,9 @@ function renderMoje() {
     section("moje-dom", "🏠 Zadania domowe", mine.filter((t) => !isSchool(t)).sort(bySort), myRow, "Brak obowiązków domowych."));
   document.title = due.length ? "⏰ " + due[0].title : "Domowe Zadania";
   renderWeek();
+  const mineA = S.alarms.filter((a) => a.member_id === S.me.id && a.enabled);
+  $("my-alarms-panel").hidden = !mineA.length;
+  $("my-alarms").replaceChildren(...mineA.map((a) => el("li", { class: "row" }, el("div", { class: "t" }, el("div", { class: "al-row-time" }, t5(a.at)), el("div", { class: "meta" }, daysLabel(a.days) + " · " + kindLabel(a))))));
 }
 
 function focusCard(t, more) {
@@ -384,8 +391,201 @@ function renderRodzic() {
   const kids = childIds();
   if (kids.length >= 2) sel.append(el("option", { value: ALL_KIDS }, kidsLabel(kids)));
   if (keep) sel.value = keep; else { const firstChild = S.members.find((m) => m.role === "child"); if (firstChild) sel.value = firstChild.id; }
+  renderAlarms();
   renderSchool();
 }
+
+// ---------- alarms (budzik): the parent sets them, the child only turns one off by solving a challenge ----------
+const DAYS = [[1, "pn"], [2, "wt"], [3, "śr"], [4, "cz"], [5, "pt"], [6, "sb"], [0, "nd"]];
+function daysLabel(days) {
+  const set = new Set(days), on = DAYS.filter(([d]) => set.has(d)).map(([, n]) => n);
+  if (on.length === 7) return "codziennie";
+  if (on.join() === "pn,wt,śr,cz,pt") return "pn–pt";
+  if (on.join() === "sb,nd") return "weekend";
+  return on.join(", ");
+}
+const KIND = { "math:1": "matematyka łatwa", "math:2": "matematyka do 100", "math:3": "tabliczka mnożenia", "code:1": "przepisz kod", "code:2": "przepisz kod", "code:3": "przepisz kod" };
+const kindLabel = (a) => a.problems + " × " + (KIND[a.challenge + ":" + a.level] || a.challenge);
+const toMin = (t) => { const [h, m] = t5(t).split(":").map(Number); return h * 60 + m; };
+// Same rule as the server: from the set time for 60 minutes on a chosen weekday, until solved today
+function ringingNow(a) {
+  if (!a.enabled || a.dismissed_day === today()) return false;
+  const d = new Date();
+  if (!a.days.includes(d.getDay())) return false;
+  const since = d.getHours() * 60 + d.getMinutes() - toMin(a.at);
+  return since >= 0 && since < 60;
+}
+
+let editingAlarm = null;
+function renderAlarms() {
+  const kids = S.members.filter((m) => m.role === "child");
+  const list = $("alarms"); list.replaceChildren();
+  for (const a of S.alarms) {
+    const ring = ringingNow(a), off = a.dismissed_day === today();
+    const state = !a.enabled ? "wyłączony przez rodzica" : ring ? "dzwoni teraz" : off ? "dziś wyłączony o " + hm(Date.parse(a.dismissed_at)) : "";
+    list.append(el("li", { class: "row" + (a.enabled ? "" : " off") },
+      el("div", { class: "t" }, el("div", {}, el("strong", {}, memberName(a.member_id)), " · " + t5(a.at)),
+        el("div", { class: "meta" }, daysLabel(a.days) + " · " + kindLabel(a))),
+      state ? el("span", { class: "pill " + (ring ? "s-help" : off ? "s-done" : "s-todo") }, state) : "",
+      el("div", { class: "acts" },
+        el("button", { class: "ghost", type: "button", "aria-pressed": String(a.enabled), onclick: () => saveAlarm(a, { enabled: !a.enabled }, a.enabled ? "Budzik wyłączony." : "Budzik włączony.") }, a.enabled ? "Wyłącz" : "Włącz"),
+        el("button", { class: "ghost", type: "button", onclick: () => editAlarm(a) }, "Zmień"),
+        el("button", { class: "ghost", type: "button", "aria-label": "Usuń budzik " + memberName(a.member_id) + " " + t5(a.at), onclick: () => removeAlarm(a) }, "Usuń"))));
+  }
+  if (!S.alarms.length) list.append(el("li", { class: "empty" }, kids.length ? "Nie ma jeszcze budzików." : "Najpierw dodaj dziecko w „Domownicy”."));
+
+  const sel = $("a-member"), keep = sel.value; sel.replaceChildren();
+  for (const m of kids) sel.append(el("option", { value: m.id }, m.name));
+  if (kids.length >= 2 && !editingAlarm) sel.append(el("option", { value: ALL_KIDS }, kidsLabel(kids.map((m) => m.id))));
+  if (keep && [...sel.options].some((o) => o.value === keep)) sel.value = keep;
+  const box = $("a-days");
+  if (!box.querySelector("input")) for (const [d, n] of DAYS) box.append(el("label", { class: "day-chip" }, el("input", { type: "checkbox", value: d, checked: d >= 1 && d <= 5 }), el("span", {}, n)));
+  $("a-head").textContent = editingAlarm ? "Zmień budzik: " + memberName(editingAlarm.member_id) : "Nowy budzik";
+  $("a-save").textContent = editingAlarm ? "Zapisz zmiany" : "Ustaw budzik";
+  $("a-cancel").hidden = !editingAlarm;
+}
+function formAlarm() {
+  const days = [...$("a-days").querySelectorAll("input:checked")].map((i) => Number(i.value));
+  const [challenge, level] = $("a-kind").value.split(":");
+  return { at: $("a-at").value, days, challenge, level: Number(level), problems: Number($("a-problems").value), enabled: true };
+}
+function editAlarm(a) {
+  editingAlarm = a;
+  $("a-member").value = a.member_id;
+  $("a-at").value = t5(a.at);
+  $("a-problems").value = String(a.problems);
+  $("a-kind").value = a.challenge === "code" ? "code:1" : a.challenge + ":" + a.level;
+  for (const i of $("a-days").querySelectorAll("input")) i.checked = a.days.includes(Number(i.value));
+  renderAlarms();
+  $("a-member").disabled = true;
+  $("a-head").scrollIntoView({ behavior: "smooth", block: "center" });
+}
+function stopEditing() { editingAlarm = null; $("a-member").disabled = false; renderAlarms(); }
+$("a-cancel").onclick = stopEditing;
+async function saveAlarm(a, patch, msg) {
+  // A changed alarm may ring again today, even if it was already turned off this morning
+  const { error } = await sb.from("dz_alarms").update({ ...patch, dismissed_day: null, updated_at: new Date().toISOString() }).eq("id", a.id);
+  if (error) { toast(errMsg(error)); return false; }
+  await loadAll(); render(); toast(msg);
+  return true;
+}
+$("alarm-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const f = formAlarm();
+  if (!f.at) { $("a-at").focus(); return; }
+  if (!f.days.length) { toast("Zaznacz co najmniej jeden dzień."); return; }
+  if (editingAlarm) { if (await saveAlarm(editingAlarm, f, "Zapisano budzik.")) stopEditing(); return; }
+  const who = $("a-member").value;
+  const ids = who === ALL_KIDS ? childIds() : who ? [who] : [];
+  if (!ids.length) { toast("Wybierz dziecko."); return; }
+  const { error } = await sb.from("dz_alarms").insert(ids.map((member_id) => ({ ...f, family_id: S.family.id, member_id })));
+  if (error) { toast(errMsg(error)); return; }
+  await loadAll(); render(); toast("Budzik " + f.at + " (" + daysLabel(f.days) + ") dla: " + namesList(ids) + ".");
+});
+async function removeAlarm(a) {
+  if (!confirmTwice("alarm-" + a.id, "Stuknij „Usuń” jeszcze raz, aby usunąć budzik " + t5(a.at) + ".")) return;
+  const { error } = await sb.from("dz_alarms").delete().eq("id", a.id);
+  if (error) toast(errMsg(error)); else { if (editingAlarm?.id === a.id) stopEditing(); await loadAll(); render(); toast("Usunięto budzik."); }
+}
+
+// Loud ring while the app is open. Browsers start sound only after a tap, so the first tap anywhere turns it on.
+const Ring = {
+  ctx: null, timer: null, n: 0,
+  start() {
+    try { if (navigator.audioSession) navigator.audioSession.type = "playback"; } catch {} // iPhone: play despite the silent switch
+    try { this.ctx ??= new (window.AudioContext || window.webkitAudioContext)(); this.ctx.resume(); } catch {}
+    if (this.timer) return;
+    this.timer = setInterval(() => this.tick(), 220);
+  },
+  tick() {
+    const c = this.ctx, step = this.n++ % 8;
+    if (step === 0) try { navigator.vibrate?.([600, 200, 600]); } catch {}
+    if (!c || c.state !== "running" || step > 3) return; // 4 beeps, short pause
+    const o = c.createOscillator(), g = c.createGain(), t = c.currentTime;
+    o.type = "square"; o.frequency.value = step % 2 ? 1320 : 990;
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.6, t + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.18);
+    o.connect(g).connect(c.destination); o.start(t); o.stop(t + 0.2);
+  },
+  stop() { clearInterval(this.timer); this.timer = null; try { navigator.vibrate?.(0); } catch {} },
+};
+
+const AL = { alarm: null, busy: false, lock: null };
+async function checkAlarm() {
+  const a = S.me && S.alarms.find((x) => x.member_id === S.me.id && ringingNow(x));
+  if (!a) { if (AL.alarm && !AL.busy) closeAlarm(); return; }
+  if (AL.alarm?.id === a.id) return;
+  AL.alarm = a;
+  $("al-time").textContent = t5(a.at);
+  $("al-head").textContent = "Pobudka, " + S.me.name + "!";
+  $("alarm").hidden = false;
+  document.documentElement.classList.add("ringing");
+  Ring.start();
+  try { AL.lock = await navigator.wakeLock?.request("screen"); } catch {}
+  showChallenge(await alarmRpc("dz_alarm_challenge", { p_alarm: a.id }));
+}
+async function alarmRpc(fn, args) {
+  const { data, error } = await sb.rpc(fn, args);
+  if (error) { $("al-msg").textContent = "Brak połączenia. Sprawdź internet i spróbuj jeszcze raz."; return null; }
+  return data;
+}
+function showChallenge(c, msg = "") {
+  if (!c) return;
+  if (!c.ringing) { finishAlarm(c.done); return; }
+  const code = c.kind === "code";
+  $("al-sub").textContent = code ? "Przepisz kod, żeby wyłączyć budzik." : "Rozwiąż zadania, żeby wyłączyć budzik.";
+  $("al-dots").replaceChildren(...Array.from({ length: c.total }, (_, i) => el("i", { class: i < c.solved ? "on" : "" })));
+  $("al-progress").textContent = (code ? "Kod " : "Zadanie ") + (c.solved + 1) + " z " + c.total;
+  $("al-q").replaceChildren(code ? el("span", { class: "al-code" }, c.q.replace(/(.{3})(?=.)/g, "$1 ")) : el("span", {}, c.q + " = ?"));
+  const inp = $("al-input");
+  inp.value = "";
+  inp.setAttribute("inputmode", code ? "text" : "numeric");
+  inp.setAttribute("autocapitalize", code ? "characters" : "off");
+  inp.placeholder = code ? "Wpisz kod" : "Wynik";
+  $("al-msg").textContent = msg;
+  inp.focus();
+}
+$("al-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  Ring.start();
+  const v = $("al-input").value.trim();
+  if (!v || !AL.alarm || AL.busy) { $("al-input").focus(); return; }
+  AL.busy = true; $("al-ok").disabled = true;
+  const r = await alarmRpc("dz_alarm_answer", { p_alarm: AL.alarm.id, p_answer: v });
+  AL.busy = false; $("al-ok").disabled = false;
+  if (!r) return;
+  const card = $("alarm").querySelector(".alarm-card");
+  if (r.correct === false) { card.classList.remove("shake"); void card.offsetWidth; card.classList.add("shake"); }
+  showChallenge(r, r.correct ? "Dobrze! Następne." : "Nie tym razem. Masz nowe zadanie.");
+});
+// Any tap on the ringing screen turns the sound on (browsers block sound until the first tap)
+$("alarm").addEventListener("pointerdown", () => Ring.start());
+function closeAlarm() {
+  Ring.stop();
+  try { AL.lock?.release(); } catch {}
+  AL.alarm = null; AL.lock = null;
+  $("alarm").hidden = true;
+  document.documentElement.classList.remove("ringing");
+}
+async function finishAlarm(solved) {
+  const a = AL.alarm;
+  closeAlarm();
+  if (!a) return;
+  const mine = S.alarms.find((x) => x.id === a.id);
+  if (mine) { mine.dismissed_day = today(); mine.dismissed_at = new Date().toISOString(); }
+  if (solved) morning();
+  render();
+}
+function morning() {
+  const box = $("cheer");
+  box.replaceChildren(el("div", { class: "card" },
+    el("div", { class: "big", "aria-hidden": "true" }, "☀️"),
+    el("div", { class: "praise" }, "Dzień dobry, " + (S.me?.name || "") + "!"),
+    el("div", { class: "count" }, "Budzik wyłączony. Wstajemy!")));
+  box.hidden = false;
+  clearTimeout(cheer.t);
+  cheer.t = setTimeout(() => (box.hidden = true), 4000);
+}
+setInterval(() => { if (!document.hidden) checkAlarm(); }, 10000);
 
 // ---------- school dziennik (eduVULCAN) ----------
 async function dziennik(action, extra = {}) {

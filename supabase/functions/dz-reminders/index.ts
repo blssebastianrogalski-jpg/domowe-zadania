@@ -1,7 +1,9 @@
 // Runs every minute (pg_cron -> pg_net). Sends Web Push for:
 //  - snoozed tasks whose snooze time has passed,
 //  - daily first reminders (remind_at) not yet sent today,
-//  - help requests (to parents' devices).
+//  - help requests (to parents' devices),
+//  - ringing alarms (budzik): every minute to the child until the challenge is solved, for at most 60 minutes;
+//    once to parents if it is still ringing after 15 minutes.
 import { createClient } from "npm:@supabase/supabase-js@2.45.4";
 import webpush from "npm:web-push@3.6.7";
 
@@ -13,10 +15,13 @@ type Task = {
   snooze_notified_at: string | null; remind_notified_day: string | null; help_notified_at: string | null;
 };
 
+type Alarm = { id: string; family_id: string; member_id: string; at: string; days: number[]; challenge: string; dismissed_day: string | null };
+
 function localNow(tz: string) {
   const parts = Object.fromEntries(new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" })
     .formatToParts(new Date()).map((p) => [p.type, p.value]));
-  return { day: `${parts.year}-${parts.month}-${parts.day}`, hm: `${parts.hour}:${parts.minute}` };
+  const day = `${parts.year}-${parts.month}-${parts.day}`;
+  return { day, hm: `${parts.hour}:${parts.minute}`, dow: new Date(day + "T12:00:00Z").getUTCDay() };
 }
 
 function effectiveStatus(t: Task, day: string) {
@@ -42,6 +47,7 @@ Deno.serve(async (req) => {
   const { data: devices } = await supabase.from("dz_devices").select("user_id,family_id,member_id");
   const { data: members } = await supabase.from("dz_members").select("id,name,role,family_id");
   const { data: subs } = await supabase.from("dz_push_subs").select("*");
+  const { data: alarms } = await supabase.from("dz_alarms").select("*").eq("enabled", true);
   const tzOf = new Map((families ?? []).map((f) => [f.id, f.tz]));
   const memberOf = new Map((members ?? []).map((m) => [m.id, m]));
 
@@ -51,10 +57,10 @@ Deno.serve(async (req) => {
   };
 
   let sent = 0;
-  async function push(targets: any[], payload: Record<string, unknown>) {
+  async function push(targets: any[], payload: Record<string, unknown>, ttl = 600) {
     for (const s of targets) {
       try {
-        await webpush.sendNotification({ endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } }, JSON.stringify(payload), { TTL: 600, urgency: "high" });
+        await webpush.sendNotification({ endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } }, JSON.stringify(payload), { TTL: ttl, urgency: "high" });
         sent++;
       } catch (e: any) {
         if (e?.statusCode === 404 || e?.statusCode === 410) await supabase.from("dz_push_subs").delete().eq("endpoint", s.endpoint);
@@ -85,6 +91,24 @@ Deno.serve(async (req) => {
       const who = memberOf.get(t.member_id)?.name ?? "Ktoś";
       await push(parents, { title: `${who} prosi o pomoc`, body: t.title, task: t.id, kind: "help" });
       await supabase.from("dz_tasks").update({ help_notified_at: new Date().toISOString() }).eq("id", t.id);
+    }
+  }
+  // Alarms: minutes since the set time, today's local weekday, not yet dismissed today
+  const toMin = (t: string) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5));
+  for (const a of (alarms ?? []) as Alarm[]) {
+    const { day, hm, dow } = localNow(tzOf.get(a.family_id) ?? "Europe/Warsaw");
+    const since = toMin(hm) - toMin(a.at);
+    if (!a.days.includes(dow) || since < 0 || since >= 60 || a.dismissed_day === day) continue;
+    const who = memberOf.get(a.member_id)?.name ?? "";
+    await push(subsFor((d) => d.member_id === a.member_id, a.family_id),
+      { title: "⏰ Pobudka" + (who ? ", " + who : "") + "!", body: "Budzik dzwoni od " + a.at.slice(0, 5) + ". Otwórz aplikację i rozwiąż " + (a.challenge === "code" ? "kod" : "zadania") + ", żeby go wyłączyć.", task: "alarm-" + a.id, kind: "alarm" }, 60);
+    if (since >= 15) {
+      const { data: ring } = await supabase.from("dz_alarm_rings").select("parent_notified_at").eq("alarm_id", a.id).eq("day", day).maybeSingle();
+      if (!ring?.parent_notified_at) {
+        const parents = subsFor((d) => d.member_id !== null && memberOf.get(d.member_id!)?.role === "parent", a.family_id);
+        await push(parents, { title: `${who || "Dziecko"} jeszcze nie wyłączył(a) budzika`, body: "Dzwoni od " + a.at.slice(0, 5) + ".", task: "alarm-" + a.id, kind: "help" });
+        await supabase.from("dz_alarm_rings").upsert({ alarm_id: a.id, day, parent_notified_at: new Date().toISOString() });
+      }
     }
   }
   return new Response(JSON.stringify({ ok: true, sent }), { headers: { "content-type": "application/json" } });

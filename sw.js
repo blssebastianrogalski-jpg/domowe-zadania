@@ -1,5 +1,5 @@
 // Service worker: app-shell cache + push notifications
-const CACHE = "dz-v9";
+const CACHE = "dz-v10";
 const SHELL = ["./", "index.html", "styles.css", "app.js", "config.js", "manifest.webmanifest", "icons/icon-192.png",
   "themes/cieply.css", "themes/nocny.css", "themes/klocki.css", "themes/piksele.css", "themes/plac.css", "themes/kotek.css", "themes/ninja.css"];
 
@@ -16,10 +16,13 @@ self.addEventListener("fetch", (e) => {
 self.addEventListener("push", (e) => {
   let d = {};
   try { d = e.data ? e.data.json() : {}; } catch { d = { title: "Domowe Zadania", body: e.data && e.data.text() }; }
-  const actions = d.kind === "help" ? [] : [{ action: "done", title: "Zrobione" }, { action: "snooze15", title: "Za 15 min" }];
+  // An alarm has no buttons on purpose: it can only be turned off in the app, by solving the challenge
+  const alarm = d.kind === "alarm";
+  const actions = d.kind === "help" || alarm ? [] : [{ action: "done", title: "Zrobione" }, { action: "snooze15", title: "Za 15 min" }];
   e.waitUntil(self.registration.showNotification(d.title || "Domowe Zadania", {
     body: d.body || "", icon: "icons/icon-192.png", badge: "icons/badge-96.png", tag: d.task || undefined, renotify: true,
     data: { task: d.task, kind: d.kind }, actions,
+    ...(alarm ? { requireInteraction: true, vibrate: [900, 300, 900, 300, 900, 300, 900] } : {}),
   }));
 });
 
@@ -27,7 +30,7 @@ self.addEventListener("notificationclick", (e) => {
   e.notification.close();
   const { task, kind } = e.notification.data || {};
   const params = new URLSearchParams();
-  if (task && e.action) { params.set("task", task); params.set("a", e.action); }
+  if (task && e.action && kind !== "alarm") { params.set("task", task); params.set("a", e.action); }
   const url = new URL("./" + (params.toString() ? "?" + params : "") + (kind === "help" ? "#rodzic" : "#moje"), self.registration.scope).href;
   e.waitUntil((async () => {
     const wins = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
