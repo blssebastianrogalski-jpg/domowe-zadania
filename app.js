@@ -144,6 +144,26 @@ function renderPick() {
   } }, m.name));
 }
 
+// ---------- collapsible sections: school (from the dziennik) and home chores ----------
+// A closed section shows "! N" when something in it is still to do (snoozed counts too, without any penalty).
+const isSchool = (t) => t.source === "eduvulcan";
+const openSects = (() => { try { return JSON.parse(localStorage.getItem("dz-sections") || "{}"); } catch { return {}; } })();
+function section(key, title, tasks, rowFn, emptyText) {
+  const left = tasks.filter((t) => st(t) !== "done").length;
+  const d = el("details", { class: "panel sect" });
+  d.open = !!openSects[key];
+  d.addEventListener("toggle", () => { openSects[key] = d.open; try { localStorage.setItem("dz-sections", JSON.stringify(openSects)); } catch {} });
+  d.append(el("summary", {},
+    el("span", { class: "sect-title" }, title),
+    left ? el("span", { class: "badge", title: left + " do zrobienia" }, "! " + left) : "",
+    el("span", { class: "sect-sum" }, left ? left + " do zrobienia" : tasks.length ? "wszystko zrobione" : "")));
+  const ul = el("ul", { class: "rows" });
+  if (!tasks.length) ul.append(el("li", { class: "empty" }, emptyText));
+  for (const t of tasks) ul.append(rowFn(t));
+  d.append(ul);
+  return d;
+}
+
 // ---------- executor ----------
 function renderMoje() {
   const mine = S.tasks.filter((t) => t.member_id === S.me.id && visible(t, true));
@@ -154,7 +174,6 @@ function renderMoje() {
     .concat(due)
     .concat(mine.filter((t) => st(t) === "todo").sort((a, b) => sortKey(a).localeCompare(sortKey(b))));
   const later = mine.filter((t) => st(t) === "snoozed" && snoozeAt(t) > now).sort((a, b) => snoozeAt(a) - snoozeAt(b));
-  const done = mine.filter((t) => st(t) === "done");
 
   const hint = $("notif-hint");
   const perm = "Notification" in window ? Notification.permission : "unsupported";
@@ -168,8 +187,18 @@ function renderMoje() {
   const lp = $("later"); lp.replaceChildren(); $("later-panel").hidden = !later.length;
   for (const t of later) lp.append(el("li", { class: "row" }, el("div", { class: "t" }, el("div", {}, t.title), el("div", { class: "meta" }, "Wrócę o " + hm(snoozeAt(t)) + (t.due ? " · termin przed " + t5(t.due) : ""))), el("div", { class: "acts" }, el("button", { onclick: () => act(t, "doing") }, "Robię teraz"))));
 
-  const dp = $("done"); dp.replaceChildren(); $("done-panel").hidden = !done.length;
-  for (const t of done) dp.append(el("li", { class: "row" }, el("div", { class: "t" }, t.title), el("span", { class: "pill s-done" }, "Zrobione")));
+  const myRow = (t) => {
+    const s = st(t);
+    const meta = [t.due_date ? dayLabel(t.due_date) : null, t.due ? "przed " + t5(t.due) : null, s === "snoozed" && snoozeAt(t) > now ? "wrócę o " + hm(snoozeAt(t)) : null].filter(Boolean).join(" · ");
+    return el("li", { class: "row" },
+      el("div", { class: "t" }, el("div", {}, t.title), meta ? el("div", { class: "meta" }, meta) : ""),
+      el("span", { class: "pill " + CLS[s] }, LABEL[s]),
+      s === "done" || s === "doing" ? "" : el("div", { class: "acts" }, el("button", { onclick: () => act(t, "doing") }, "Robię teraz")));
+  };
+  const bySort = (a, b) => (st(a) === "done") - (st(b) === "done") || sortKey(a).localeCompare(sortKey(b));
+  $("my-sections").replaceChildren(
+    section("moje-szkola", "📚 Zadania szkolne", mine.filter(isSchool).sort(bySort), myRow, "Brak zadań szkolnych."),
+    section("moje-dom", "🏠 Zadania domowe", mine.filter((t) => !isSchool(t)).sort(bySort), myRow, "Brak obowiązków domowych."));
   document.title = due.length ? "⏰ " + due[0].title : "Domowe Zadania";
   renderWeek();
 }
@@ -327,16 +356,18 @@ function renderRodzic() {
   for (const m of doers) {
     const ts = S.tasks.filter((t) => t.member_id === m.id && visible(t)).sort((a, b) => sortKey(a).localeCompare(sortKey(b)));
     if (!ts.length && m.role === "parent") continue;
-    const ul = el("ul", { class: "rows" });
-    if (!ts.length) ul.append(el("li", { class: "empty" }, "Brak zadań."));
-    for (const t of ts) {
+    const row = (t) => {
       const s = st(t);
-      ul.append(el("li", { class: "row" },
+      return el("li", { class: "row" },
         el("div", { class: "t" }, el("div", {}, t.title), el("div", { class: "meta" }, [t.due_date ? dayLabel(t.due_date) : null, t.remind_at ? "przypomnienie " + t5(t.remind_at) : null, t.due ? "przed " + t5(t.due) : null, t.source === "eduvulcan" ? "z dziennika" : t.repeat === "daily" ? "codziennie" : "jednorazowo"].filter(Boolean).join(" · "))),
         el("span", { class: "pill " + CLS[s] }, LABEL[s]),
-        el("div", { class: "acts" }, el("button", { class: "ghost", "aria-label": "Usuń zadanie " + t.title, onclick: () => removeTask(t) }, "Usuń"))));
-    }
-    board.append(el("h3", { style: "margin-top:8px" }, m.name), ul);
+        el("div", { class: "acts" }, el("button", { class: "ghost", "aria-label": "Usuń zadanie " + t.title, onclick: () => removeTask(t) }, "Usuń")));
+    };
+    const school = ts.filter(isSchool), home = ts.filter((t) => !isSchool(t));
+    const box = el("div", { class: "sects" });
+    if (m.role === "child" || school.length) box.append(section("r-" + m.id + "-szkola", "📚 Zadania szkolne", school, row, "Brak zadań szkolnych."));
+    if (m.role === "child" || home.length) box.append(section("r-" + m.id + "-dom", "🏠 Zadania domowe", home, row, "Brak obowiązków domowych."));
+    board.append(el("h3", { style: "margin-top:8px" }, m.name), box);
   }
   if (!board.children.length) board.append(el("p", { class: "empty" }, "Dodaj domowników na dole strony, potem pierwsze zadanie."));
 

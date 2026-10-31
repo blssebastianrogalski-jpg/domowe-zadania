@@ -136,3 +136,17 @@ details summary{cursor:pointer;color:var(--muted);font-size:.9rem}
 .msg.me{background:var(--accent);color:var(--accent-ink);align-self:flex-end}
 .msg.typing{color:var(--muted);font-style:italic}
 .msg.err{background:var(--help-bg);color:var(--help);align-self:stretch;max-width:none}
+/* collapsible sections: school / home */
+.sects{display:flex;flex-direction:column;gap:10px}
+.sect{display:block}
+.sect > summary{display:flex;align-items:center;gap:10px;cursor:pointer;list-style:none;min-height:32px;font-family:var(--f-display);font-weight:700;font-size:1.05rem;color:var(--ink)}
+.sect > summary::-webkit-details-marker{display:none}
+.sect > summary::after{content:"▾";margin-left:auto;color:var(--muted);transition:transform .15s}
+.sect[open] > summary::after{transform:rotate(180deg)}
+.sect > .rows{margin-top:10px}
+.sect .badge{display:inline-flex;align-items:center;justify-content:center;min-width:28px;height:26px;padding:0 9px;border-radius:999px;background:var(--accent);color:var(--accent-ink);font-family:var(--f-body);font-size:.85rem;font-weight:700;font-variant-numeric:tabular-nums}
+.sect[open] .badge{display:none}
+.sect .sect-sum{font-family:var(--f-body);font-weight:400;font-size:.8rem;color:var(--muted)}
+.sect:not([open]) .sect-sum{display:none}
+#board .sect{background:var(--bg);padding:12px}
+@media (prefers-reduced-motion:no-preference){.sect:not([open]) .badge{animation:nudge 2.4s ease-in-out 2}@keyframes nudge{0%,80%,100%{transform:none}88%{transform:scale(1.15)}}}
