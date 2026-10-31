@@ -16,7 +16,7 @@ self.addEventListener("fetch", (e) => {
 self.addEventListener("push", (e) => {
   let d = {};
   try { d = e.data ? e.data.json() : {}; } catch { d = { title: "Domowe Zadania", body: e.data && e.data.text() }; }
-  const actions = d.kind === "help" ? [] : [{ action: "done", title: "Zrobione" }, { action: "snooze20", title: "Za 20 min" }];
+  const actions = d.kind === "help" ? [] : [{ action: "done", title: "Zrobione" }, { action: "snooze15", title: "Za 15 min" }];
   e.waitUntil(self.registration.showNotification(d.title || "Domowe Zadania", {
     body: d.body || "", icon: "icons/icon-192.png", badge: "icons/badge-96.png", tag: d.task || undefined, renotify: true,
     data: { task: d.task, kind: d.kind }, actions,
