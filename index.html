@@ -164,6 +164,8 @@ try { const k = localStorage.getItem("dz-skin"); if (k && k !== "morski") { docu
       <h2>Powiadomienia na tym telefonie</h2>
       <p class="muted small" id="notif-state"></p>
       <button class="primary" id="notif-on">Włącz powiadomienia</button>
+      <button id="notif-test" hidden>🔔 Wyślij próbne powiadomienie</button>
+      <p class="muted small">Przypomnienia przychodzą przy zadaniu o jego godzinie, a o 16:00, 18:00 i 19:30 dziecko dostaje podsumowanie niezrobionych zadań na dziś i zadań domowych na jutro. Dźwięk zależy od ustawień powiadomień telefonu.</p>
       <p class="muted small" id="ios-hint" hidden>Na iPhonie: otwórz tę stronę w Safari, stuknij „Udostępnij” → „Do ekranu początkowego”, a potem uruchom aplikację z ikony i włącz powiadomienia tutaj.</p>
     </div>
     <div class="panel" id="invite-panel" hidden>
