@@ -114,7 +114,12 @@ try { const k = localStorage.getItem("dz-skin"); if (k && k !== "morski") { docu
         <label>Pierwsze przypomnienie<input id="f-remind" type="time" value="17:00"></label>
         <label>Termin<input id="f-due" type="time" value="19:00"></label>
       </div>
-      <label class="check"><input id="f-repeat" type="checkbox" checked> Powtarzaj codziennie</label>
+      <label>Jak często<select id="f-freq">
+        <option value="daily">Codziennie</option>
+        <option value="days">W wybrane dni tygodnia</option>
+        <option value="once">Jednorazowo (tylko dziś)</option>
+      </select></label>
+      <fieldset class="days" id="f-days"><legend>Dni</legend></fieldset>
       <label>Kroki (każdy w nowej linii, opcjonalnie)
         <textarea id="f-steps" rows="3" placeholder="worek z kuchni&#10;do altany&#10;nowy worek"></textarea>
       </label>

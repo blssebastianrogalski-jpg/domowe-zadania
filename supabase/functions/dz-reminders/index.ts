@@ -1,6 +1,6 @@
 // Runs every minute (pg_cron -> pg_net). Sends Web Push for:
 //  - snoozed tasks whose snooze time has passed,
-//  - daily first reminders (remind_at) not yet sent today,
+//  - daily first reminders (remind_at) not yet sent today (only on the task's chosen weekdays, if any),
 //  - help requests (to parents' devices),
 //  - nudges at fixed times (NUDGE_AT): one summary per child of today's unfinished tasks and homework due tomorrow,
 //  - ringing alarms (budzik): every minute to the child until the challenge is solved, for at most 60 minutes;
@@ -12,7 +12,7 @@ const supabase = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPAB
 
 type Task = {
   id: string; family_id: string; member_id: string; title: string; due: string | null; remind_at: string | null;
-  repeat: string; status: string; status_day: string | null; snooze_until: string | null; due_date: string | null;
+  repeat: string; status: string; status_day: string | null; snooze_until: string | null; due_date: string | null; days: number[] | null;
   snooze_notified_at: string | null; remind_notified_day: string | null; help_notified_at: string | null;
 };
 
@@ -28,6 +28,9 @@ function localNow(tz: string) {
 // Times (family local) of the summary nudge; dz_config key nudge_times overrides, e.g. "16:00,18:00,19:30"
 const NUDGE_AT = ["16:00", "18:00", "19:30"];
 const nextDay = (day: string) => { const d = new Date(day + "T12:00:00Z"); d.setUTCDate(d.getUTCDate() + 1); return d.toISOString().slice(0, 10); };
+
+// Repeating task limited to chosen weekdays (0 = Sunday): no reminders on the other days
+const offDay = (t: Task, dow: number) => t.repeat === "daily" && Array.isArray(t.days) && t.days.length > 0 && !t.days.includes(dow);
 
 function effectiveStatus(t: Task, day: string) {
   if (t.repeat === "daily" && t.status_day !== day) return "todo";
@@ -75,7 +78,7 @@ Deno.serve(async (req) => {
 
   const now = Date.now();
   for (const t of (tasks ?? []) as Task[]) {
-    const { day, hm } = localNow(tzOf.get(t.family_id) ?? "Europe/Warsaw");
+    const { day, hm, dow } = localNow(tzOf.get(t.family_id) ?? "Europe/Warsaw");
     const st = effectiveStatus(t, day);
     const forMember = () => subsFor((d) => d.member_id === t.member_id, t.family_id);
 
@@ -85,7 +88,7 @@ Deno.serve(async (req) => {
       await supabase.from("dz_tasks").update({ snooze_notified_at: new Date().toISOString() }).eq("id", t.id);
     }
 
-    if (t.remind_at && st === "todo" && t.remind_notified_day !== day && t.remind_at.slice(0, 5) <= hm &&
+    if (t.remind_at && st === "todo" && !offDay(t, dow) && t.remind_notified_day !== day && t.remind_at.slice(0, 5) <= hm &&
         (t.repeat === "daily" || !t.status_day || t.status_day <= day)) {
       await push(forMember(), { title: "Czas na: " + t.title, body: t.due ? `Termin przed ${t.due.slice(0, 5)}. Możesz odłożyć.` : "Możesz zrobić teraz albo odłożyć.", task: t.id, kind: "remind" });
       await supabase.from("dz_tasks").update({ remind_notified_day: day }).eq("id", t.id);
@@ -102,7 +105,7 @@ Deno.serve(async (req) => {
   const nudgeAt = conf.nudge_times ? conf.nudge_times.split(",").map((x) => x.trim()) : NUDGE_AT;
   for (const m of members ?? []) {
     if (m.role !== "child") continue;
-    const { day, hm } = localNow(tzOf.get(m.family_id) ?? "Europe/Warsaw");
+    const { day, hm, dow } = localNow(tzOf.get(m.family_id) ?? "Europe/Warsaw");
     if (!nudgeAt.includes(hm)) continue;
     const tomorrow = nextDay(day);
     const mine = ((tasks ?? []) as Task[]).filter((t) => t.member_id === m.id);
@@ -111,7 +114,7 @@ Deno.serve(async (req) => {
     const today = mine.filter((t) => {
       const st = effectiveStatus(t, day);
       if (st === "done" || (st === "snoozed" && t.snooze_until && Date.parse(t.snooze_until) > now)) return false;
-      if (t.due_date) return false;
+      if (t.due_date || offDay(t, dow)) return false;
       return t.repeat === "daily" || !t.status_day || t.status_day <= day;
     });
     const forTomorrow = mine.filter((t) => t.due_date === tomorrow && effectiveStatus(t, day) !== "done");

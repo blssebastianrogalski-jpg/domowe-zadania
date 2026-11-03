@@ -20,8 +20,12 @@ const addDays = (day, n) => { const d = new Date(day + "T12:00:00"); d.setDate(d
 function visible(t, forChild = false) {
   if (t.due_date && t.due_date < today()) return false;
   if (forChild && t.due_date && today() < addDays(t.due_date, -3)) return false;
+  if (forChild && offToday(t)) return false;
   return t.repeat === "daily" || st(t) !== "done" || t.status_day === today();
 }
+// A repeating task with chosen weekdays (days) shows up only on those days; null days = every day
+const offToday = (t, d = new Date()) => t.repeat === "daily" && Array.isArray(t.days) && t.days.length > 0 && !t.days.includes(d.getDay());
+const freqLabel = (t) => t.source === "eduvulcan" ? "z dziennika" : t.repeat !== "daily" ? "jednorazowo" : t.days?.length ? daysLabel(t.days) : "codziennie";
 const WD = ["niedziela", "poniedziałek", "wtorek", "środa", "czwartek", "piątek", "sobota"];
 function dayLabel(day) {
   if (day === today()) return "dziś";
@@ -371,8 +375,8 @@ function renderRodzic() {
     const row = (t) => {
       const s = st(t);
       return el("li", { class: "row" },
-        el("div", { class: "t" }, el("div", {}, t.title), el("div", { class: "meta" }, [t.due_date ? dayLabel(t.due_date) : null, t.remind_at ? "przypomnienie " + t5(t.remind_at) : null, t.due ? "przed " + t5(t.due) : null, t.source === "eduvulcan" ? "z dziennika" : t.repeat === "daily" ? "codziennie" : "jednorazowo"].filter(Boolean).join(" · "))),
-        el("span", { class: "pill " + CLS[s] }, LABEL[s]),
+        el("div", { class: "t" }, el("div", {}, t.title), el("div", { class: "meta" }, [t.due_date ? dayLabel(t.due_date) : null, t.remind_at ? "przypomnienie " + t5(t.remind_at) : null, t.due ? "przed " + t5(t.due) : null, freqLabel(t)].filter(Boolean).join(" · "))),
+        offToday(t) ? el("span", { class: "pill s-off" }, "nie dziś") : el("span", { class: "pill " + CLS[s] }, LABEL[s]),
         el("div", { class: "acts" }, el("button", { class: "ghost", "aria-label": "Usuń zadanie " + t.title, onclick: () => removeTask(t) }, "Usuń")));
     };
     const school = ts.filter(isSchool), home = ts.filter((t) => !isSchool(t));
@@ -775,6 +779,10 @@ $("m-form").addEventListener("submit", async (e) => {
   $("m-name").value = ""; await loadAll(); render();
 });
 
+{ const box = $("f-days");
+  for (const [d, n] of [[1, "pn"], [2, "wt"], [3, "śr"], [4, "cz"], [5, "pt"], [6, "sb"], [0, "nd"]]) box.append(el("label", { class: "day-chip" }, el("input", { type: "checkbox", value: d, checked: d >= 1 && d <= 5 }), el("span", {}, n)));
+  const sync = () => { box.hidden = $("f-freq").value !== "days"; };
+  $("f-freq").addEventListener("change", sync); sync(); }
 $("add-form").addEventListener("submit", async (e) => {
   e.preventDefault();
   const title = $("f-title").value.trim(), who = $("f-member").value;
@@ -782,11 +790,14 @@ $("add-form").addEventListener("submit", async (e) => {
   const ids = who === ALL_KIDS ? childIds() : [who];
   if (!ids.length) { toast("Wybierz osobę."); return; }
   const steps = $("f-steps").value.split("\n").map((s) => s.trim()).filter(Boolean).slice(0, 8);
-  const base = { family_id: S.family.id, title, steps, due: $("f-due").value || null, remind_at: $("f-remind").value || null, repeat: $("f-repeat").checked ? "daily" : "once", status: "todo", status_day: today() };
+  const freq = $("f-freq").value;
+  const days = freq === "days" ? [...$("f-days").querySelectorAll("input:checked")].map((i) => Number(i.value)) : null;
+  if (freq === "days" && !days.length) { toast("Zaznacz co najmniej jeden dzień."); return; }
+  const base = { family_id: S.family.id, title, steps, due: $("f-due").value || null, remind_at: $("f-remind").value || null, repeat: freq === "once" ? "once" : "daily", days: days && days.length < 7 ? days : null, status: "todo", status_day: today() };
   const { error } = await sb.from("dz_tasks").insert(ids.map((member_id) => ({ ...base, member_id })));
   if (error) { toast(errMsg(error)); return; }
   $("f-title").value = ""; $("f-steps").value = "";
-  await loadAll(); render(); toast("Dodano zadanie dla: " + namesList(ids) + ".");
+  await loadAll(); render(); toast("Dodano zadanie dla: " + namesList(ids) + (base.days ? " (" + daysLabel(base.days) + ")" : "") + ".");
 });
 
 // ---------- settings & push ----------
