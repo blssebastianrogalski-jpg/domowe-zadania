@@ -1,5 +1,5 @@
 // Service worker: app-shell cache + push notifications
-const CACHE = "dz-v11";
+const CACHE = "dz-v12";
 const SHELL = ["./", "index.html", "styles.css", "app.js", "config.js", "manifest.webmanifest", "icons/icon-192.png",
   "themes/cieply.css", "themes/nocny.css", "themes/klocki.css", "themes/piksele.css", "themes/plac.css", "themes/kotek.css", "themes/ninja.css"];
 
@@ -18,11 +18,14 @@ self.addEventListener("push", (e) => {
   try { d = e.data ? e.data.json() : {}; } catch { d = { title: "Domowe Zadania", body: e.data && e.data.text() }; }
   // An alarm has no buttons on purpose: it can only be turned off in the app, by solving the challenge
   const alarm = d.kind === "alarm";
-  const actions = d.kind === "help" || alarm ? [] : [{ action: "done", title: "Zrobione" }, { action: "snooze15", title: "Za 15 min" }];
+  const actions = d.kind === "help" || d.kind === "nudge" || alarm ? [] : [{ action: "done", title: "Zrobione" }, { action: "snooze15", title: "Za 15 min" }];
+  if (d.kind === "nudge" && typeof d.count === "number") self.navigator.setAppBadge?.(d.count).catch(() => {});
   e.waitUntil(self.registration.showNotification(d.title || "Domowe Zadania", {
     body: d.body || "", icon: "icons/icon-192.png", badge: "icons/badge-96.png", tag: d.task || undefined, renotify: true,
     data: { task: d.task, kind: d.kind }, actions,
     ...(alarm ? { requireInteraction: true, vibrate: [900, 300, 900, 300, 900, 300, 900] } : {}),
+    // Task reminders stay on screen until tapped, with sound and a vibration
+    ...(d.kind === "nudge" || d.kind === "remind" || d.kind === "snooze" ? { requireInteraction: true, silent: false, vibrate: [400, 200, 400] } : {}),
   }));
 });
 

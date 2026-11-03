@@ -2,6 +2,7 @@
 //  - snoozed tasks whose snooze time has passed,
 //  - daily first reminders (remind_at) not yet sent today,
 //  - help requests (to parents' devices),
+//  - nudges at fixed times (NUDGE_AT): one summary per child of today's unfinished tasks and homework due tomorrow,
 //  - ringing alarms (budzik): every minute to the child until the challenge is solved, for at most 60 minutes;
 //    once to parents if it is still ringing after 15 minutes.
 import { createClient } from "npm:@supabase/supabase-js@2.45.4";
@@ -11,7 +12,7 @@ const supabase = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPAB
 
 type Task = {
   id: string; family_id: string; member_id: string; title: string; due: string | null; remind_at: string | null;
-  repeat: string; status: string; status_day: string | null; snooze_until: string | null;
+  repeat: string; status: string; status_day: string | null; snooze_until: string | null; due_date: string | null;
   snooze_notified_at: string | null; remind_notified_day: string | null; help_notified_at: string | null;
 };
 
@@ -23,6 +24,10 @@ function localNow(tz: string) {
   const day = `${parts.year}-${parts.month}-${parts.day}`;
   return { day, hm: `${parts.hour}:${parts.minute}`, dow: new Date(day + "T12:00:00Z").getUTCDay() };
 }
+
+// Times (family local) of the summary nudge; dz_config key nudge_times overrides, e.g. "16:00,18:00,19:30"
+const NUDGE_AT = ["16:00", "18:00", "19:30"];
+const nextDay = (day: string) => { const d = new Date(day + "T12:00:00Z"); d.setUTCDate(d.getUTCDate() + 1); return d.toISOString().slice(0, 10); };
 
 function effectiveStatus(t: Task, day: string) {
   if (t.repeat === "daily" && t.status_day !== day) return "todo";
@@ -93,6 +98,31 @@ Deno.serve(async (req) => {
       await supabase.from("dz_tasks").update({ help_notified_at: new Date().toISOString() }).eq("id", t.id);
     }
   }
+  // Nudges: the cron runs every minute, so a nudge fires in the minute matching one of the times
+  const nudgeAt = conf.nudge_times ? conf.nudge_times.split(",").map((x) => x.trim()) : NUDGE_AT;
+  for (const m of members ?? []) {
+    if (m.role !== "child") continue;
+    const { day, hm } = localNow(tzOf.get(m.family_id) ?? "Europe/Warsaw");
+    if (!nudgeAt.includes(hm)) continue;
+    const tomorrow = nextDay(day);
+    const mine = ((tasks ?? []) as Task[]).filter((t) => t.member_id === m.id);
+    // Today: not done and not snoozed into the future (snoozing stays without penalty); school cards count
+    // only for the day before their date, a card dated today was due at school already
+    const today = mine.filter((t) => {
+      const st = effectiveStatus(t, day);
+      if (st === "done" || (st === "snoozed" && t.snooze_until && Date.parse(t.snooze_until) > now)) return false;
+      if (t.due_date) return false;
+      return t.repeat === "daily" || !t.status_day || t.status_day <= day;
+    });
+    const forTomorrow = mine.filter((t) => t.due_date === tomorrow && effectiveStatus(t, day) !== "done");
+    if (!today.length && !forTomorrow.length) continue;
+    const list = (ts: Task[]) => ts.slice(0, 4).map((t) => t.title).join(", ") + (ts.length > 4 ? ` i ${ts.length - 4} więcej` : "");
+    const n = today.length;
+    const title = n ? `📋 ${m.name}, na dziś zostało: ${n} ${n === 1 ? "zadanie" : n < 5 ? "zadania" : "zadań"}` : `📚 ${m.name}, na jutro do szkoły`;
+    const body = [n ? list(today) : "", forTomorrow.length ? "Na jutro: " + list(forTomorrow) : ""].filter(Boolean).join("\n");
+    await push(subsFor((d) => d.member_id === m.id, m.family_id), { title, body, task: "nudge-" + m.id, kind: "nudge", count: n }, 3600);
+  }
+
   // Alarms: minutes since the set time, today's local weekday, not yet dismissed today
   const toMin = (t: string) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5));
   for (const a of (alarms ?? []) as Alarm[]) {

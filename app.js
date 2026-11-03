@@ -204,6 +204,8 @@ function renderMoje() {
     section("moje-szkola", "📚 Zadania szkolne", mine.filter(isSchool).sort(bySort), myRow, "Brak zadań szkolnych."),
     section("moje-dom", "🏠 Zadania domowe", mine.filter((t) => !isSchool(t)).sort(bySort), myRow, "Brak obowiązków domowych."));
   document.title = due.length ? "⏰ " + due[0].title : "Domowe Zadania";
+  // Number on the home-screen icon: what is still left for today
+  try { if (active.length) navigator.setAppBadge?.(active.length); else navigator.clearAppBadge?.(); } catch {}
   renderWeek();
   const mineA = S.alarms.filter((a) => a.member_id === S.me.id && a.enabled);
   $("my-alarms-panel").hidden = !mineA.length;
@@ -797,6 +799,7 @@ function renderSettings() {
     : perm === "granted" ? "Powiadomienia są włączone na tym telefonie." : perm === "denied" ? "Powiadomienia są zablokowane w ustawieniach przeglądarki lub telefonu." : "Powiadomienia są wyłączone.";
   $("notif-on").hidden = !supported || perm === "denied";
   $("notif-on").textContent = perm === "granted" ? "Odśwież rejestrację powiadomień" : "Włącz powiadomienia";
+  $("notif-test").hidden = perm !== "granted";
   $("ios-hint").hidden = !(isIOS && !standalone);
   $("invite-panel").hidden = !S.isParent;
   if (S.isParent && S.family) {
@@ -877,6 +880,13 @@ async function enablePush() {
   render();
 }
 $("notif-on").onclick = enablePush;
+// Local test: shows the same kind of pop-up a reminder does, so the family can check sound and banner settings
+$("notif-test").onclick = async () => {
+  if (!("Notification" in window) || Notification.permission !== "granted") { toast("Najpierw włącz powiadomienia."); return; }
+  const reg = await navigator.serviceWorker.ready;
+  await reg.showNotification("📋 Próbne przypomnienie", { body: "Tak będą wyglądać przypomnienia o zadaniach.", icon: "icons/icon-192.png", badge: "icons/badge-96.png", tag: "test", renotify: true, requireInteraction: true, silent: false, vibrate: [400, 200, 400] });
+  toast("Wysłane. Jeśli nie było dźwięku, sprawdź ustawienia powiadomień telefonu.");
+};
 
 // Actions from a tapped notification: ?task=<id>&a=done|snooze15 (snooze20 kept for notifications sent before the change)
 async function handleUrlAction() {
