@@ -1,7 +1,7 @@
 // Runs every minute (pg_cron -> pg_net). Sends Web Push for:
 //  - snoozed tasks whose snooze time has passed,
 //  - daily first reminders (remind_at) not yet sent today (only on the task's chosen weekdays, if any),
-//  - help requests (to parents' devices),
+//  - help requests and finished tasks of children (to parents' devices),
 //  - nudges at fixed times (NUDGE_AT): one summary per child of today's unfinished tasks and homework due tomorrow,
 //  - ringing alarms (budzik): every minute to the child until the challenge is solved, for at most 60 minutes;
 //    once to parents if it is still ringing after 15 minutes.
@@ -13,7 +13,7 @@ const supabase = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPAB
 type Task = {
   id: string; family_id: string; member_id: string; title: string; due: string | null; remind_at: string | null;
   repeat: string; status: string; status_day: string | null; snooze_until: string | null; due_date: string | null; days: number[] | null;
-  snooze_notified_at: string | null; remind_notified_day: string | null; help_notified_at: string | null;
+  snooze_notified_at: string | null; remind_notified_day: string | null; help_notified_at: string | null; done_notified_day: string | null;
 };
 
 type Alarm = { id: string; family_id: string; member_id: string; at: string; days: number[]; challenge: string; dismissed_day: string | null };
@@ -25,8 +25,9 @@ function localNow(tz: string) {
   return { day, hm: `${parts.hour}:${parts.minute}`, dow: new Date(day + "T12:00:00Z").getUTCDay() };
 }
 
-// Times (family local) of the summary nudge; dz_config key nudge_times overrides, e.g. "16:00,18:00,19:30"
-const NUDGE_AT = ["16:00", "18:00", "19:30"];
+// Times (family local) of the summary nudge: every 30 minutes from 15:00 to 20:30;
+// dz_config key nudge_times overrides, e.g. "16:00,18:00,19:30"
+const NUDGE_AT = Array.from({ length: 12 }, (_, i) => `${String(15 + Math.floor(i / 2)).padStart(2, "0")}:${i % 2 ? "30" : "00"}`);
 const nextDay = (day: string) => { const d = new Date(day + "T12:00:00Z"); d.setUTCDate(d.getUTCDate() + 1); return d.toISOString().slice(0, 10); };
 
 // Repeating task limited to chosen weekdays (0 = Sunday): no reminders on the other days
@@ -99,6 +100,14 @@ Deno.serve(async (req) => {
       const who = memberOf.get(t.member_id)?.name ?? "Ktoś";
       await push(parents, { title: `${who} prosi o pomoc`, body: t.title, task: t.id, kind: "help" });
       await supabase.from("dz_tasks").update({ help_notified_at: new Date().toISOString() }).eq("id", t.id);
+    }
+
+    // A child finished a task: tell the parents once per completion day
+    if (t.status === "done" && t.status_day && t.done_notified_day !== t.status_day && memberOf.get(t.member_id)?.role === "child") {
+      const parents = subsFor((d) => d.member_id !== null && memberOf.get(d.member_id!)?.role === "parent", t.family_id);
+      const who = memberOf.get(t.member_id)?.name ?? "Dziecko";
+      await push(parents, { title: `✅ ${who}: zrobione`, body: t.title, task: t.id, kind: "help" });
+      await supabase.from("dz_tasks").update({ done_notified_day: t.status_day }).eq("id", t.id);
     }
   }
   // Nudges: the cron runs every minute, so a nudge fires in the minute matching one of the times
