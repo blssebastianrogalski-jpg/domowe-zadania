@@ -189,3 +189,5 @@ html.ringing,html.ringing body{overflow:hidden}
 .nt-next{font-size:1.1rem}
 .nt-hint{font-size:.85rem;opacity:.7}
 .night .nt-off{margin-top:24px;background:transparent;border:1px solid #2A2833;color:#6E6A80}
+.s-off{background:var(--surface);color:var(--muted);border:1px dashed var(--line)}
+.days[hidden]{display:none}
