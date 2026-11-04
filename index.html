@@ -92,22 +92,13 @@ try { const k = localStorage.getItem("dz-skin"); if (k && k !== "morski") { docu
       <ul id="help" class="rows"></ul>
     </div>
     <div class="panel">
-      <h2>Ile razy przypominałeś/aś dziś ustnie?</h2>
-      <div class="tally">
-        <button id="t-minus" aria-label="Odejmij jedno przypomnienie">−1</button>
-        <span class="num" id="t-num">0</span>
-        <button id="t-plus" class="primary">+1 przypomnienie</button>
-        <div class="bars" id="t-bars" aria-label="Ostatnie 7 dni"></div>
-      </div>
-      <p class="muted small">Licz każde „pamiętasz, że miałeś…”. Pierwsze 2 dni zapisuj bez aplikacji, potem z nią.</p>
-    </div>
-    <div class="panel">
       <h2>Zadania rodziny dziś</h2>
       <p class="muted small">Widzisz: do zrobienia, w trakcie, potrzebuje pomocy, zrobione. Nie dostajesz informacji o każdym odłożeniu.</p>
       <div id="board"></div>
     </div>
-    <form class="panel" id="add-form" autocomplete="off">
-      <h2>Nowe zadanie</h2>
+    <details class="panel sect sect-top" id="sect-add" data-sect="r-nowe">
+    <summary><span class="sect-title">➕ Nowe zadanie</span></summary>
+    <form class="sect-body" id="add-form" autocomplete="off">
       <label>Polecenie (krótko)<input id="f-title" required maxlength="80" placeholder="np. Wynieś śmieci"></label>
       <div class="grid3">
         <label>Dla kogo<select id="f-member" required></select></label>
@@ -125,8 +116,10 @@ try { const k = localStorage.getItem("dz-skin"); if (k && k !== "morski") { docu
       </label>
       <button type="submit" class="primary">Dodaj zadanie</button>
     </form>
-    <form class="panel" id="alarm-form" autocomplete="off">
-      <h2>⏰ Budziki</h2>
+    </details>
+    <details class="panel sect sect-top" id="sect-alarms" data-sect="r-budziki">
+    <summary><span class="sect-title">⏰ Budziki</span><span class="sect-count" id="alarms-count"></span></summary>
+    <form class="sect-body" id="alarm-form" autocomplete="off">
       <p class="muted small">Dziecko nie zmieni ani nie usunie budzika. Wyłączy go dopiero, gdy rozwiąże zadania na ekranie. Telefon dziecka dostaje powiadomienie co minutę, dopóki tego nie zrobi (najdłużej godzinę). Jeśli po 15 minutach dalej dzwoni, dostaniesz znać.</p>
       <ul id="alarms" class="rows"></ul>
       <h3 id="a-head">Nowy budzik</h3>
@@ -148,19 +141,32 @@ try { const k = localStorage.getItem("dz-skin"); if (k && k !== "morski") { docu
       </div>
       <p class="muted small">Na telefonie dziecka muszą być włączone powiadomienia (⚙ Ustawienia), a na iPhonie aplikacja musi być dodana do ekranu początkowego. Przy zablokowanym telefonie dzwoni zwykły dźwięk powiadomienia, wyciszony telefon go nie zagra. Żeby budzik zadzwonił głośno mimo wyciszenia, dziecko przed snem włącza „🌙 Tryb nocny” w swoich zadaniach i zostawia telefon na ładowarce. Głośność alarmu to głośność multimediów telefonu.</p>
     </form>
+    </details>
     <div class="panel" id="school-panel">
       <h2>Dziennik eduVULCAN</h2>
       <div id="school" class="school"><p class="muted small">Sprawdzam połączenie…</p></div>
     </div>
     <div class="panel">
-      <h2>Domownicy</h2>
+      <h2>Ile razy przypominałeś/aś dziś ustnie?</h2>
+      <div class="tally">
+        <button id="t-minus" aria-label="Odejmij jedno przypomnienie">−1</button>
+        <span class="num" id="t-num">0</span>
+        <button id="t-plus" class="primary">+1 przypomnienie</button>
+        <div class="bars" id="t-bars" aria-label="Ostatnie 7 dni"></div>
+      </div>
+      <p class="muted small">Licz każde „pamiętasz, że miałeś…”. Pierwsze 2 dni zapisuj bez aplikacji, potem z nią.</p>
+    </div>
+    <details class="panel sect sect-top" id="sect-members" data-sect="r-domownicy">
+      <summary><span class="sect-title">👪 Domownicy</span><span class="sect-count" id="members-count"></span></summary>
+      <div class="sect-body">
       <ul id="members" class="rows"></ul>
       <form id="m-form" class="inline" autocomplete="off">
         <input id="m-name" maxlength="30" placeholder="Imię" required>
         <select id="m-role" aria-label="Rola"><option value="child">wykonuje zadania</option><option value="parent">rodzic</option></select>
         <button type="submit">Dodaj</button>
       </form>
-    </div>
+      </div>
+    </details>
   </section>
 
   <!-- SETTINGS -->
