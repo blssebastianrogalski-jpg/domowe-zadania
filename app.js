@@ -156,11 +156,17 @@ function renderPick() {
 // A closed section shows "! N" when something in it is still to do (snoozed counts too, without any penalty).
 const isSchool = (t) => t.source === "eduvulcan";
 const openSects = (() => { try { return JSON.parse(localStorage.getItem("dz-sections") || "{}"); } catch { return {}; } })();
+const saveSect = (key, open) => { openSects[key] = open; try { localStorage.setItem("dz-sections", JSON.stringify(openSects)); } catch {} };
+// Fixed parent panels (Nowe zadanie, Budziki, Domownicy) fold the same way and remember their state
+for (const d of document.querySelectorAll("details[data-sect]")) {
+  d.open = !!openSects[d.dataset.sect];
+  d.addEventListener("toggle", () => saveSect(d.dataset.sect, d.open));
+}
 function section(key, title, tasks, rowFn, emptyText) {
   const left = tasks.filter((t) => st(t) !== "done").length;
   const d = el("details", { class: "panel sect" });
   d.open = !!openSects[key];
-  d.addEventListener("toggle", () => { openSects[key] = d.open; try { localStorage.setItem("dz-sections", JSON.stringify(openSects)); } catch {} });
+  d.addEventListener("toggle", () => saveSect(key, d.open));
   d.append(el("summary", {},
     el("span", { class: "sect-title" }, title),
     left ? el("span", { class: "badge", title: left + " do zrobienia" }, "! " + left) : "",
@@ -397,6 +403,7 @@ function renderRodzic() {
     ml.append(el("li", { class: "row" }, el("div", { class: "t" }, m.name, el("span", { class: "meta" }, m.role === "parent" ? "  · rodzic" : "  · wykonuje zadania")), acts));
     sel.append(el("option", { value: m.id }, m.name));
   }
+  $("members-count").textContent = S.members.length ? String(S.members.length) : "";
   const kids = childIds();
   if (kids.length >= 2) sel.append(el("option", { value: ALL_KIDS }, kidsLabel(kids)));
   if (keep) sel.value = keep; else { const firstChild = S.members.find((m) => m.role === "child"); if (firstChild) sel.value = firstChild.id; }
@@ -441,6 +448,8 @@ function renderAlarms() {
         el("button", { class: "ghost", type: "button", onclick: () => editAlarm(a) }, "Zmień"),
         el("button", { class: "ghost", type: "button", "aria-label": "Usuń budzik " + memberName(a.member_id) + " " + t5(a.at), onclick: () => removeAlarm(a) }, "Usuń"))));
   }
+  const on = S.alarms.filter((a) => a.enabled).length;
+  $("alarms-count").textContent = S.alarms.length ? (on < S.alarms.length ? on + " z " + S.alarms.length + " włączonych" : String(S.alarms.length)) : "";
   if (!S.alarms.length) list.append(el("li", { class: "empty" }, kids.length ? "Nie ma jeszcze budzików." : "Najpierw dodaj dziecko w „Domownicy”."));
 
   const sel = $("a-member"), keep = sel.value; sel.replaceChildren();
@@ -467,6 +476,7 @@ function editAlarm(a) {
   for (const i of $("a-days").querySelectorAll("input")) i.checked = a.days.includes(Number(i.value));
   renderAlarms();
   $("a-member").disabled = true;
+  $("sect-alarms").open = true;
   $("a-head").scrollIntoView({ behavior: "smooth", block: "center" });
 }
 function stopEditing() { editingAlarm = null; $("a-member").disabled = false; renderAlarms(); }
