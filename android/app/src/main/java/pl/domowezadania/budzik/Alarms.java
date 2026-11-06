@@ -36,6 +36,12 @@ final class Alarms {
     private Alarms() {}
 
     static SharedPreferences prefs(Context c) { return c.getSharedPreferences("budzik", Context.MODE_PRIVATE); }
+    /** Alarm sound chosen in the app, or null for the phone's default alarm sound. */
+    static android.net.Uri sound(Context c) {
+        String s = prefs(c).getString("sound", null);
+        return s == null ? null : android.net.Uri.parse(s);
+    }
+
     static String secret(Context c) { return prefs(c).getString("secret", null); }
 
     static JSONObject cached(Context c) {

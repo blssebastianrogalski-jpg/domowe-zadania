@@ -119,7 +119,8 @@ public class RingService extends Service {
             try {
                 player.reset();
                 player.setAudioAttributes(new AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_ALARM).build());
-                player.setDataSource(this, Settings.System.DEFAULT_RINGTONE_URI);
+                // The chosen song may be gone (deleted file): fall back to the phone's alarm sound
+                player.setDataSource(this, systemAlarm());
                 player.setLooping(true); player.prepare(); player.start();
             } catch (Exception ignored) {}
         }
@@ -134,7 +135,14 @@ public class RingService extends Service {
         main.postDelayed(this::poll, test ? 1000 : POLL_MS);
     }
 
+    /** The sound chosen in the app (a phone sound or a song), else the phone's default alarm sound. */
     private Uri alarmSound() {
+        Uri chosen = Alarms.sound(this);
+        if (chosen != null) return chosen;
+        return systemAlarm();
+    }
+
+    private Uri systemAlarm() {
         Uri u = RingtoneManager.getActualDefaultRingtoneUri(this, RingtoneManager.TYPE_ALARM);
         if (u == null) u = Settings.System.DEFAULT_ALARM_ALERT_URI;
         if (u == null) u = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE);

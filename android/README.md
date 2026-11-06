@@ -6,6 +6,7 @@ telefonie może tylko pokazać powiadomienie; ta aplikacja dzwoni jak budzik w Z
 - dźwięk budzika w pętli na kanale alarmu, więc gra także przy wyciszonym telefonie i w trybie Nie przeszkadzać
   (jeśli tryb dopuszcza alarmy, tak jest domyślnie); głośność alarmu idzie na maksimum na czas dzwonienia,
 - budzik na cały ekran nad ekranem blokady, wibracje,
+- dźwięk do wyboru w aplikacji: dźwięk telefonu albo własna piosenka (domyślnie dźwięk alarmu telefonu),
 - wyłącza się dopiero, gdy dziecko rozwiąże zadania w aplikacji Domowe Zadania (serwer zapisuje wyłączenie,
   aplikacja sprawdza to co 15 s), gdy rodzic wyłączy budzik, albo po 60 minutach.
 
