@@ -223,7 +223,8 @@ function renderMoje() {
   $("my-alarm-acts").replaceChildren(
     el("button", { class: "primary", onclick: nightOn }, "🌙 Tryb nocny"),
     el("button", { onclick: testSound }, "🔊 Sprawdź głośność"),
-    el("button", { onclick: testLocked }, "🔒 Test na zablokowanym ekranie"));
+    el("button", { onclick: testLocked }, "🔒 Test na zablokowanym ekranie"),
+    ...(/Android/i.test(navigator.userAgent) ? [el("button", { class: "primary", onclick: linkAndroid }, "📲 Budzik na Androida")] : []));
 }
 
 function focusCard(t, more) {
@@ -570,6 +571,16 @@ async function testLocked() {
   if (!reg?.active) return toast("Nie udało się. Odśwież aplikację i spróbuj jeszcze raz.");
   reg.active.postMessage({ type: "alarm-test", delay: 15 });
   toast("Zablokuj teraz ekran. Za 15 sekund przyjdzie próbny budzik. Cisza? Ustawienia → Aplikacje → Chrome → Powiadomienia: kanał tej strony ma mieć dźwięk, a tryb Nie przeszkadzać i tryb snu muszą być wyłączone.", 9000);
+}
+
+// Android app with a real alarm clock (folder android/): it gets a device secret that reads only this child's alarms.
+// If the app is not installed yet, Chrome downloads it instead (browser_fallback_url).
+const APK_URL = "https://github.com/blssebastianrogalski-jpg/domowe-zadania/releases/latest/download/budzik-dz.apk";
+async function linkAndroid() {
+  const { data, error } = await sb.rpc("dz_alarm_link");
+  if (error || !data) return toast(error ? errMsg(error) : "Nie udało się. Spróbuj jeszcze raz.");
+  toast("Nie masz jeszcze aplikacji Budzik DZ? Pobierze się teraz. Zainstaluj ją i stuknij ten przycisk jeszcze raz.", 9000);
+  location.href = "intent://link?s=" + data + "#Intent;scheme=dzbudzik;package=pl.domowezadania.budzik;S.browser_fallback_url=" + encodeURIComponent(APK_URL) + ";end";
 }
 
 // Night mode: the app stays open on the charger with a dark clock and rings at the exact time, even on silent

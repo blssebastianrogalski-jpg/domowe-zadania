@@ -1,0 +1,30 @@
+plugins { id "com.android.application" }
+
+android {
+    namespace "pl.domowezadania.budzik"
+    compileSdk 35
+    defaultConfig {
+        applicationId "pl.domowezadania.budzik"
+        minSdk 26
+        targetSdk 35
+        // CI sets the build number so every new APK installs over the old one
+        versionCode (System.getenv("BUILD_NUMBER") ?: "1").toInteger()
+        versionName "1." + (System.getenv("BUILD_NUMBER") ?: "0")
+    }
+    // Signing key from the CI secret (BUDZIK_KEYSTORE_B64 + BUDZIK_KEYSTORE_PASSWORD), written to budzik.keystore by the
+    // workflow. Without it the build uses a one-off key, and an update then needs the old app uninstalled first.
+    signingConfigs {
+        family {
+            storeFile file("../budzik.keystore")
+            storePassword System.getenv("BUDZIK_KEYSTORE_PASSWORD") ?: "budzik-tymczasowy"
+            keyAlias "budzik"
+            keyPassword System.getenv("BUDZIK_KEYSTORE_PASSWORD") ?: "budzik-tymczasowy"
+        }
+    }
+    buildTypes {
+        release { minifyEnabled false; signingConfig signingConfigs.family }
+        debug { signingConfig signingConfigs.family }
+    }
+    compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
+    lint { abortOnError false; checkReleaseBuilds false }
+}
