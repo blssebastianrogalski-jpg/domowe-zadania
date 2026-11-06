@@ -5,6 +5,7 @@ import android.app.Activity;
 import android.app.NotificationManager;
 import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.media.RingtoneManager;
 import android.graphics.Color;
 import android.net.Uri;
 import android.os.Build;
@@ -104,6 +105,12 @@ public class MainActivity extends Activity {
             warn("Wyłącz oszczędzanie baterii dla budzika, żeby telefon go nie usypiał.", "Wyłącz oszczędzanie",
                     new Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:" + getPackageName())));
 
+        box.addView(Ui.text(this, "Dźwięk budzika: " + soundName(), 16, Ui.INK, false));
+        box.addView(Ui.button(this, "🎵 Wybierz dźwięk telefonu", Ui.LIGHT, Ui.ACCENT, v -> pickTone()));
+        box.addView(Ui.button(this, "🎶 Wybierz własną piosenkę", Ui.LIGHT, Ui.ACCENT, v -> pickSong()));
+        if (Alarms.sound(this) != null)
+            box.addView(Ui.button(this, "Wróć do domyślnego dźwięku alarmu", Ui.LIGHT, Ui.MUTED, v -> { setSound(null); }));
+
         box.addView(Ui.button(this, "🔔 Próbny budzik za 10 sekund", Ui.LIGHT, Ui.ACCENT, v -> {
             Alarms.setClock(this, System.currentTimeMillis() + 10_000, Alarms.ringIntent(this, "test", "", true));
             Toast.makeText(this, "Zablokuj ekran. Za 10 sekund zadzwoni próbny budzik.", Toast.LENGTH_LONG).show();
@@ -114,6 +121,57 @@ public class MainActivity extends Activity {
         box.addView(Ui.button(this, "Otwórz Domowe Zadania", Ui.LIGHT, Ui.ACCENT, v -> openApp()));
         long synced = Alarms.prefs(this).getLong("synced", 0);
         if (synced > 0) box.addView(Ui.text(this, "Ostatnio pobrane: " + java.text.DateFormat.getTimeInstance(java.text.DateFormat.SHORT).format(new java.util.Date(synced)) + ". Zmiany rodzica dochodzą w ciągu 15 minut.", 14, Ui.MUTED, false));
+    }
+
+    private static final int PICK_TONE = 11, PICK_SONG = 12;
+
+    private void pickTone() {
+        Intent i = new Intent(RingtoneManager.ACTION_RINGTONE_PICKER)
+                .putExtra(RingtoneManager.EXTRA_RINGTONE_TYPE, RingtoneManager.TYPE_ALARM)
+                .putExtra(RingtoneManager.EXTRA_RINGTONE_TITLE, "Dźwięk budzika")
+                .putExtra(RingtoneManager.EXTRA_RINGTONE_SHOW_SILENT, false)
+                .putExtra(RingtoneManager.EXTRA_RINGTONE_SHOW_DEFAULT, true)
+                .putExtra(RingtoneManager.EXTRA_RINGTONE_EXISTING_URI, Alarms.sound(this) != null ? Alarms.sound(this) : Settings.System.DEFAULT_ALARM_ALERT_URI);
+        try { startActivityForResult(i, PICK_TONE); } catch (Exception e) { Toast.makeText(this, "Ten telefon nie ma listy dźwięków. Wybierz własną piosenkę.", Toast.LENGTH_LONG).show(); }
+    }
+
+    private void pickSong() {
+        Intent i = new Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("audio/*");
+        try { startActivityForResult(i, PICK_SONG); } catch (Exception e) { Toast.makeText(this, "Nie udało się otworzyć plików.", Toast.LENGTH_LONG).show(); }
+    }
+
+    @Override protected void onActivityResult(int req, int res, Intent data) {
+        super.onActivityResult(req, res, data);
+        if (res != RESULT_OK || data == null) return;
+        if (req == PICK_TONE) {
+            Uri u = data.getParcelableExtra(RingtoneManager.EXTRA_RINGTONE_PICKED_URI);
+            // "Default" means: follow the phone's alarm sound
+            setSound(u == null || Settings.System.DEFAULT_ALARM_ALERT_URI.equals(u) ? null : u);
+        } else if (req == PICK_SONG && data.getData() != null) {
+            Uri u = data.getData();
+            // Keep the right to read the song after a restart
+            try { getContentResolver().takePersistableUriPermission(u, Intent.FLAG_GRANT_READ_URI_PERMISSION); } catch (Exception ignored) {}
+            setSound(u);
+        }
+    }
+
+    private void setSound(Uri u) {
+        Alarms.prefs(this).edit().putString("sound", u == null ? null : u.toString()).apply();
+        render();
+        Toast.makeText(this, "Zapisano. Sprawdź próbnym budzikiem.", Toast.LENGTH_SHORT).show();
+    }
+
+    private String soundName() {
+        Uri u = Alarms.sound(this);
+        if (u == null) return "domyślny dźwięk alarmu telefonu";
+        try (android.database.Cursor c = getContentResolver().query(u, new String[]{android.provider.OpenableColumns.DISPLAY_NAME}, null, null, null)) {
+            if (c != null && c.moveToFirst() && c.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME) >= 0) {
+                String n = c.getString(c.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME));
+                if (n != null) return n;
+            }
+        } catch (Exception ignored) {}
+        try { String t = RingtoneManager.getRingtone(this, u).getTitle(this); if (t != null) return t; } catch (Exception ignored) {}
+        return "wybrany dźwięk";
     }
 
     private void warn(String msg, String label, Intent settings) {
