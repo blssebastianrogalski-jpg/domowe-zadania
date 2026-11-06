@@ -8,8 +8,8 @@ android {
         minSdk 26
         targetSdk 35
         // CI sets the build number so every new APK installs over the old one
-        versionCode (System.getenv("BUILD_NUMBER") ?: "1").toInteger()
-        versionName "1." + (System.getenv("BUILD_NUMBER") ?: "0")
+        versionCode = Integer.parseInt(System.getenv("BUILD_NUMBER") ?: "1")
+        versionName = "1." + (System.getenv("BUILD_NUMBER") ?: "0")
     }
     // Signing key from the CI secret (BUDZIK_KEYSTORE_B64 + BUDZIK_KEYSTORE_PASSWORD), written to budzik.keystore by the
     // workflow. Without it the build uses a one-off key, and an update then needs the old app uninstalled first.
