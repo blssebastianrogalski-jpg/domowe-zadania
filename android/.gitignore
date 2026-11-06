@@ -1,4 +1,5 @@
-android/budzik.keystore
-android/.gradle/
-android/app/build/
-android/build/
+budzik.keystore
+.gradle/
+app/build/
+build/
+local.properties
