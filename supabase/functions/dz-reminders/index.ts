@@ -3,7 +3,7 @@
 //  - daily first reminders (remind_at) not yet sent today (only on the task's chosen weekdays, if any),
 //  - help requests and finished tasks of children (to parents' devices),
 //  - nudges at fixed times (NUDGE_AT): one summary per child of today's unfinished tasks and homework due tomorrow,
-//  - ringing alarms (budzik): every minute to the child until the challenge is solved, for at most 60 minutes;
+//  - ringing alarms (budzik): twice a minute to the child until the challenge is solved, for at most 60 minutes;
 //    once to parents if it is still ringing after 15 minutes.
 import { createClient } from "npm:@supabase/supabase-js@2.45.4";
 import webpush from "npm:web-push@3.6.7";
@@ -137,13 +137,16 @@ Deno.serve(async (req) => {
 
   // Alarms: minutes since the set time, today's local weekday, not yet dismissed today
   const toMin = (t: string) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5));
+  const rings = new Map<string, { targets: any[]; payload: Record<string, unknown>; day: string }>();
   for (const a of (alarms ?? []) as Alarm[]) {
     const { day, hm, dow } = localNow(tzOf.get(a.family_id) ?? "Europe/Warsaw");
     const since = toMin(hm) - toMin(a.at);
     if (!a.days.includes(dow) || since < 0 || since >= 60 || a.dismissed_day === day) continue;
     const who = memberOf.get(a.member_id)?.name ?? "";
-    await push(subsFor((d) => d.member_id === a.member_id, a.family_id),
-      { title: "⏰ Pobudka" + (who ? ", " + who : "") + "!", body: "Budzik dzwoni od " + a.at.slice(0, 5) + ". Otwórz aplikację i rozwiąż " + (a.challenge === "code" ? "kod" : "zadania") + ", żeby go wyłączyć.", task: "alarm-" + a.id, kind: "alarm" }, 60);
+    const ring = { targets: subsFor((d) => d.member_id === a.member_id, a.family_id), payload:
+      { title: "⏰ Pobudka" + (who ? ", " + who : "") + "!", body: "Budzik dzwoni od " + a.at.slice(0, 5) + ". Otwórz aplikację i rozwiąż " + (a.challenge === "code" ? "kod" : "zadania") + ", żeby go wyłączyć.", task: "alarm-" + a.id, kind: "alarm" } };
+    await push(ring.targets, ring.payload, 30);
+    rings.set(a.id, { ...ring, day });
     if (since >= 15) {
       const { data: ring } = await supabase.from("dz_alarm_rings").select("parent_notified_at").eq("alarm_id", a.id).eq("day", day).maybeSingle();
       if (!ring?.parent_notified_at) {
@@ -152,6 +155,19 @@ Deno.serve(async (req) => {
         await supabase.from("dz_alarm_rings").upsert({ alarm_id: a.id, day, parent_notified_at: new Date().toISOString() });
       }
     }
+  }
+  // Cron runs once a minute: ring once more half a minute later, unless the child turned the alarm off meanwhile
+  if (rings.size) {
+    const again = (async () => {
+      await new Promise((r) => setTimeout(r, 30_000));
+      const { data: still } = await supabase.from("dz_alarms").select("id,dismissed_day,enabled").in("id", [...rings.keys()]);
+      for (const a of still ?? []) {
+        const r = rings.get(a.id)!;
+        if (a.enabled && a.dismissed_day !== r.day) await push(r.targets, r.payload, 30);
+      }
+    })();
+    // @ts-ignore EdgeRuntime is the Supabase edge runtime global
+    if (typeof EdgeRuntime !== "undefined") EdgeRuntime.waitUntil(again); else await again;
   }
   return new Response(JSON.stringify({ ok: true, sent }), { headers: { "content-type": "application/json" } });
 });

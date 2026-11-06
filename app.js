@@ -44,7 +44,7 @@ function namesList(ids) {
 }
 const kidsLabel = (ids) => ids.length <= 3 ? namesList(ids) + " razem" : "Wszystkie dzieci (" + ids.length + ")";
 
-function toast(msg) { const el = $("toast"); el.textContent = msg; el.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(() => (el.hidden = true), 4500); }
+function toast(msg, ms = 4500) { const el = $("toast"); el.textContent = msg; el.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(() => (el.hidden = true), ms); }
 function el(tag, props = {}, ...kids) {
   const e = document.createElement(tag);
   for (const [k, v] of Object.entries(props)) {
@@ -222,7 +222,8 @@ function renderMoje() {
   $("my-alarms").replaceChildren(...mineA.map((a) => el("li", { class: "row" }, el("div", { class: "t" }, el("div", { class: "al-row-time" }, t5(a.at)), el("div", { class: "meta" }, daysLabel(a.days) + " · " + kindLabel(a))))));
   $("my-alarm-acts").replaceChildren(
     el("button", { class: "primary", onclick: nightOn }, "🌙 Tryb nocny"),
-    el("button", { onclick: testSound }, "🔊 Sprawdź głośność"));
+    el("button", { onclick: testSound }, "🔊 Sprawdź głośność"),
+    el("button", { onclick: testLocked }, "🔒 Test na zablokowanym ekranie"));
 }
 
 function focusCard(t, more) {
@@ -560,6 +561,15 @@ function testSound() {
   Ring.play("alarm"); clearTimeout(testT);
   testT = setTimeout(() => { if (!AL.alarm) Ring.stop(); }, 3000);
   toast("Tak głośno zadzwoni budzik. Za cicho? Podgłoś telefon przyciskami głośności.");
+}
+
+// The worker sends the same notification as a real alarm 15 s later, so the child can lock the phone and listen
+async function testLocked() {
+  if (!("Notification" in window) || Notification.permission !== "granted") return toast("Najpierw włącz powiadomienia w aplikacji.");
+  const reg = await navigator.serviceWorker?.ready;
+  if (!reg?.active) return toast("Nie udało się. Odśwież aplikację i spróbuj jeszcze raz.");
+  reg.active.postMessage({ type: "alarm-test", delay: 15 });
+  toast("Zablokuj teraz ekran. Za 15 sekund przyjdzie próbny budzik. Cisza? Ustawienia → Aplikacje → Chrome → Powiadomienia: kanał tej strony ma mieć dźwięk, a tryb Nie przeszkadzać i tryb snu muszą być wyłączone.", 9000);
 }
 
 // Night mode: the app stays open on the charger with a dark clock and rings at the exact time, even on silent
