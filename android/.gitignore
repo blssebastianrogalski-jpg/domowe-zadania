@@ -1,0 +1,5 @@
+budzik.keystore
+.gradle/
+app/build/
+build/
+local.properties
