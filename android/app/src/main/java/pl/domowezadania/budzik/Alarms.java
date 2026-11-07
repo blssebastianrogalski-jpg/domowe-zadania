@@ -28,6 +28,8 @@ final class Alarms {
     static final String SUPABASE_KEY = "sb_publishable_UHW9kVafsscGUjYZdHXM-g_YxKN0E3N";
     static final String APP_URL = "https://blssebastianrogalski-jpg.github.io/domowe-zadania/";
     static final long RING_MINUTES = 60;
+    /** How often the app asks the server: the parent's changes and messages (komunikaty) arrive within this time. */
+    static final long SYNC_MS = 5 * 60_000;
 
     static final String ACTION_RING = "pl.domowezadania.budzik.RING";
     static final String ACTION_SYNC = "pl.domowezadania.budzik.SYNC";
@@ -91,6 +93,14 @@ final class Alarms {
         return false;
     }
 
+    /** A parent's message (komunikat): a one-day alarm with a text, ringing from the moment it was sent. */
+    static boolean isMessage(JSONObject a) { return a != null && !a.isNull("ring_on") && !a.optString("ring_on").isEmpty(); }
+
+    /** A message rings only on its day; an ordinary alarm on its weekdays. */
+    static boolean ringsOn(JSONObject a, LocalDate day) {
+        return hasDay(a, dow(day)) && (!isMessage(a) || day.toString().equals(a.optString("ring_on")));
+    }
+
     /** Sunday = 0 like the web app and Postgres. */
     static int dow(LocalDate d) { return d.getDayOfWeek().getValue() % 7; }
 
@@ -106,9 +116,19 @@ final class Alarms {
             if (a == null || !a.optBoolean("enabled")) continue;
             LocalTime t;
             try { t = LocalTime.parse(a.optString("at")); } catch (Exception e) { continue; }
+            // A message sent a moment ago is already past its time: ring at once while it is within its 60 minutes
+            if (isMessage(a)) {
+                LocalDate day = now.toLocalDate();
+                ZonedDateTime from = ZonedDateTime.of(day, t, z);
+                if (!ringsOn(a, day) || day.toString().equals(a.optString("dismissed_day"))
+                        || now.isBefore(from) || !now.isBefore(from.plusMinutes(RING_MINUTES))) continue;
+                ZonedDateTime when = now.plusSeconds(2);
+                if (best == null || when.isBefore(best.when)) best = new Next(a.optString("id"), a.optString("at"), when);
+                continue;
+            }
             for (int k = 0; k < 8; k++) {
                 LocalDate day = now.toLocalDate().plusDays(k);
-                if (!hasDay(a, dow(day)) || day.toString().equals(a.optString("dismissed_day"))) continue;
+                if (!ringsOn(a, day) || day.toString().equals(a.optString("dismissed_day"))) continue;
                 ZonedDateTime when = ZonedDateTime.of(day, t, z);
                 if (!when.isAfter(now)) continue;
                 if (best == null || when.isBefore(best.when)) best = new Next(a.optString("id"), a.optString("at"), when);
@@ -144,7 +164,7 @@ final class Alarms {
         else am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, pi);
     }
 
-    /** Schedules the next alarm from the cached feed, and a sync every 15 minutes so the parent's changes arrive. */
+    /** Schedules the next alarm from the cached feed, and the next sync in 5 minutes so the parent's changes and messages arrive. */
     static Next schedule(Context c) {
         AlarmManager am = c.getSystemService(AlarmManager.class);
         Next n = next(cached(c));
@@ -152,8 +172,12 @@ final class Alarms {
         if (n == null) am.cancel(pi);
         else setClock(c, n.when.toInstant().toEpochMilli(), pi);
         PendingIntent sync = PendingIntent.getBroadcast(c, 3, new Intent(c, AlarmReceiver.class).setAction(ACTION_SYNC), PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
-        if (secret(c) != null) am.setInexactRepeating(AlarmManager.ELAPSED_REALTIME_WAKEUP, SystemClock.elapsedRealtime() + AlarmManager.INTERVAL_FIFTEEN_MINUTES, AlarmManager.INTERVAL_FIFTEEN_MINUTES, sync);
-        else am.cancel(sync);
+        // One sync at a time, each sync schedules the next. Allowed while the phone sleeps (Doze may stretch it to ~10 min).
+        if (secret(c) != null) {
+            long at = SystemClock.elapsedRealtime() + SYNC_MS;
+            if (canExact(c)) am.setExactAndAllowWhileIdle(AlarmManager.ELAPSED_REALTIME_WAKEUP, at, sync);
+            else am.setAndAllowWhileIdle(AlarmManager.ELAPSED_REALTIME_WAKEUP, at, sync);
+        } else am.cancel(sync);
         return n;
     }
 

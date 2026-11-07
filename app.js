@@ -217,7 +217,7 @@ function renderMoje() {
   // Number on the home-screen icon: what is still left for today
   try { if (active.length) navigator.setAppBadge?.(active.length); else navigator.clearAppBadge?.(); } catch {}
   renderWeek();
-  const mineA = S.alarms.filter((a) => a.member_id === S.me.id && a.enabled);
+  const mineA = S.alarms.filter((a) => a.member_id === S.me.id && a.enabled && !isMsg(a));
   $("my-alarms-panel").hidden = !mineA.length;
   $("my-alarms").replaceChildren(...mineA.map((a) => el("li", { class: "row" }, el("div", { class: "t" }, el("div", { class: "al-row-time" }, t5(a.at)), el("div", { class: "meta" }, daysLabel(a.days) + " · " + kindLabel(a))))));
   $("my-alarm-acts").replaceChildren(
@@ -425,9 +425,11 @@ function daysLabel(days) {
 const KIND = { "math:1": "matematyka łatwa", "math:2": "matematyka do 100", "math:3": "tabliczka mnożenia", "code:1": "przepisz kod", "code:2": "przepisz kod", "code:3": "przepisz kod" };
 const kindLabel = (a) => a.problems + " × " + (KIND[a.challenge + ":" + a.level] || a.challenge);
 const toMin = (t) => { const [h, m] = t5(t).split(":").map(Number); return h * 60 + m; };
+// A parent's message (komunikat, migration 008) is a one-day alarm with a text: ring_on is its only day
+const isMsg = (a) => !!a.ring_on;
 // Same rule as the server: from the set time for 60 minutes on a chosen weekday, until solved today
 function ringingNow(a) {
-  if (!a.enabled || a.dismissed_day === today()) return false;
+  if (!a.enabled || a.dismissed_day === today() || (a.ring_on && a.ring_on !== today())) return false;
   const d = new Date();
   if (!a.days.includes(d.getDay())) return false;
   const since = d.getHours() * 60 + d.getMinutes() - toMin(a.at);
@@ -438,7 +440,8 @@ let editingAlarm = null;
 function renderAlarms() {
   const kids = S.members.filter((m) => m.role === "child");
   const list = $("alarms"); list.replaceChildren();
-  for (const a of S.alarms) {
+  const alarms = S.alarms.filter((a) => !isMsg(a));
+  for (const a of alarms) {
     const ring = ringingNow(a), off = a.dismissed_day === today();
     const state = !a.enabled ? "wyłączony przez rodzica" : ring ? "dzwoni teraz" : off ? "dziś wyłączony o " + hm(Date.parse(a.dismissed_at)) : "";
     list.append(el("li", { class: "row" + (a.enabled ? "" : " off") },
@@ -450,9 +453,9 @@ function renderAlarms() {
         el("button", { class: "ghost", type: "button", onclick: () => editAlarm(a) }, "Zmień"),
         el("button", { class: "ghost", type: "button", "aria-label": "Usuń budzik " + memberName(a.member_id) + " " + t5(a.at), onclick: () => removeAlarm(a) }, "Usuń"))));
   }
-  const on = S.alarms.filter((a) => a.enabled).length;
-  $("alarms-count").textContent = S.alarms.length ? (on < S.alarms.length ? on + " z " + S.alarms.length + " włączonych" : String(S.alarms.length)) : "";
-  if (!S.alarms.length) list.append(el("li", { class: "empty" }, kids.length ? "Nie ma jeszcze budzików." : "Najpierw dodaj dziecko w „Domownicy”."));
+  const on = alarms.filter((a) => a.enabled).length;
+  $("alarms-count").textContent = alarms.length ? (on < alarms.length ? on + " z " + alarms.length + " włączonych" : String(alarms.length)) : "";
+  if (!alarms.length) list.append(el("li", { class: "empty" }, kids.length ? "Nie ma jeszcze budzików." : "Najpierw dodaj dziecko w „Domownicy”."));
 
   const sel = $("a-member"), keep = sel.value; sel.replaceChildren();
   for (const m of kids) sel.append(el("option", { value: m.id }, m.name));
@@ -463,6 +466,65 @@ function renderAlarms() {
   $("a-head").textContent = editingAlarm ? "Zmień budzik: " + memberName(editingAlarm.member_id) : "Nowy budzik";
   $("a-save").textContent = editingAlarm ? "Zapisz zmiany" : "Ustaw budzik";
   $("a-cancel").hidden = !editingAlarm;
+  renderMessages();
+}
+
+// ---------- komunikat: the parent's message rings at the child's like an alarm, with the text on the screen ----------
+function renderMessages() {
+  const kids = S.members.filter((m) => m.role === "child");
+  const msgs = S.alarms.filter(isMsg).sort((a, b) => (b.ring_on + t5(b.at)).localeCompare(a.ring_on + t5(a.at))).slice(0, 15);
+  const list = $("msgs"); list.replaceChildren();
+  for (const a of msgs) {
+    const ring = ringingNow(a), off = !!a.dismissed_day;
+    const state = ring ? "dzwoni teraz" : off ? "wyłączony o " + hm(Date.parse(a.dismissed_at)) : !a.enabled ? "zatrzymany przez rodzica" : "nie wyłączony";
+    const when = a.ring_on === today() ? t5(a.at) : dayLabel(a.ring_on) + " " + t5(a.at);
+    list.append(el("li", { class: "row" + (ring ? "" : " off") },
+      el("div", { class: "t" }, el("div", {}, el("strong", {}, memberName(a.member_id)), " · " + when),
+        el("div", { class: "meta msg-text" }, a.message)),
+      el("span", { class: "pill " + (ring ? "s-help" : off ? "s-done" : "s-todo") }, state),
+      el("div", { class: "acts" },
+        ring ? el("button", { class: "ghost", type: "button", onclick: () => saveAlarm(a, { enabled: false }, "Zatrzymano alarm komunikatu.") }, "Zatrzymaj") : "",
+        el("button", { class: "ghost", type: "button", "aria-label": "Usuń komunikat do " + memberName(a.member_id), onclick: () => removeMessage(a) }, "Usuń"))));
+  }
+  const ringing = msgs.filter(ringingNow).length;
+  $("msgs-count").textContent = ringing ? "🔔 " + ringing : "";
+  if (!msgs.length) list.append(el("li", { class: "empty" }, kids.length ? "Nie wysłano jeszcze komunikatu." : "Najpierw dodaj dziecko w „Domownicy”."));
+  const sel = $("m-member"), keep = sel.value; sel.replaceChildren();
+  for (const m of kids) sel.append(el("option", { value: m.id }, m.name));
+  if (kids.length >= 2) sel.append(el("option", { value: ALL_KIDS }, kidsLabel(kids.map((m) => m.id))));
+  if (keep && [...sel.options].some((o) => o.value === keep)) sel.value = keep;
+  else msgDefaults();
+}
+// Same way to turn it off as the child's own alarm, if the child has one
+function msgDefaults() {
+  const a = S.alarms.find((x) => !isMsg(x) && x.member_id === $("m-member").value);
+  if (!a) return;
+  $("m-kind").value = a.challenge === "code" ? "code:1" : a.challenge + ":" + a.level;
+  if ([...$("m-problems").options].some((o) => o.value === String(a.problems))) $("m-problems").value = String(a.problems);
+}
+$("m-member").addEventListener("change", msgDefaults);
+$("msg-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const text = $("m-text").value.trim();
+  if (!text) { $("m-text").focus(); return; }
+  const who = $("m-member").value;
+  const ids = who === ALL_KIDS ? childIds() : who ? [who] : [];
+  if (!ids.length) { toast("Wybierz dziecko."); return; }
+  const [challenge, level] = $("m-kind").value.split(":");
+  $("m-send").disabled = true;
+  for (const id of ids) {
+    const { error } = await sb.rpc("dz_send_message", { p_member: id, p_message: text, p_challenge: challenge, p_level: Number(level), p_problems: Number($("m-problems").value) });
+    if (error) { $("m-send").disabled = false; toast(errMsg(error)); return; }
+  }
+  $("m-send").disabled = false;
+  $("m-text").value = "";
+  await loadAll(); render();
+  toast("Wysłano do: " + namesList(ids) + ". Alarm dzwoni u dziecka do rozwiązania zadań.");
+});
+async function removeMessage(a) {
+  if (!confirmTwice("msg-" + a.id, "Stuknij „Usuń” jeszcze raz, aby usunąć komunikat" + (ringingNow(a) ? " i zatrzymać alarm." : "."))) return;
+  const { error } = await sb.from("dz_alarms").delete().eq("id", a.id);
+  if (error) toast(errMsg(error)); else { await loadAll(); render(); toast("Usunięto komunikat."); }
 }
 function formAlarm() {
   const days = [...$("a-days").querySelectorAll("input:checked")].map((i) => Number(i.value));
@@ -588,7 +650,7 @@ const nextAlarm = () => {
   if (!S.me) return null;
   const now = new Date(), cur = now.getHours() * 60 + now.getMinutes();
   let best = null;
-  for (const a of S.alarms.filter((x) => x.member_id === S.me.id && x.enabled)) for (let i = 0; i < 8; i++) {
+  for (const a of S.alarms.filter((x) => x.member_id === S.me.id && x.enabled && !isMsg(x))) for (let i = 0; i < 8; i++) {
     const dow = (now.getDay() + i) % 7;
     if (!a.days.includes(dow) || (i === 0 && (toMin(a.at) <= cur || a.dismissed_day === today()))) continue;
     const mins = i * 1440 + toMin(a.at) - cur;
@@ -633,7 +695,9 @@ async function checkAlarm() {
   if (AL.alarm?.id === a.id) return;
   AL.alarm = a;
   $("al-time").textContent = t5(a.at);
-  $("al-head").textContent = "Pobudka, " + S.me.name + "!";
+  $("al-head").textContent = a.message ? (a.sent_by ? "📢 " + memberName(a.sent_by) + " pisze:" : "📢 Wiadomość od rodzica") : "Pobudka, " + S.me.name + "!";
+  $("al-text").textContent = a.message || "";
+  $("al-text").hidden = !a.message;
   $("alarm").hidden = false;
   document.documentElement.classList.add("ringing");
   Ring.start();
@@ -649,7 +713,8 @@ function showChallenge(c, msg = "") {
   if (!c) return;
   if (!c.ringing) { finishAlarm(c.done); return; }
   const code = c.kind === "code";
-  $("al-sub").textContent = code ? "Przepisz kod, żeby wyłączyć budzik." : "Rozwiąż zadania, żeby wyłączyć budzik.";
+  const what = AL.alarm?.message ? "alarm" : "budzik";
+  $("al-sub").textContent = code ? "Przepisz kod, żeby wyłączyć " + what + "." : "Rozwiąż zadania, żeby wyłączyć " + what + ".";
   $("al-dots").replaceChildren(...Array.from({ length: c.total }, (_, i) => el("i", { class: i < c.solved ? "on" : "" })));
   $("al-progress").textContent = (code ? "Kod " : "Zadanie ") + (c.solved + 1) + " z " + c.total;
   $("al-q").replaceChildren(code ? el("span", { class: "al-code" }, c.q.replace(/(.{3})(?=.)/g, "$1 ")) : el("span", {}, c.q + " = ?"));
@@ -689,8 +754,8 @@ async function finishAlarm(solved) {
   if (!a) return;
   const mine = S.alarms.find((x) => x.id === a.id);
   if (mine) { mine.dismissed_day = today(); mine.dismissed_at = new Date().toISOString(); }
-  if (NIGHT.on) nightOff();
-  if (solved) morning();
+  if (NIGHT.on && !a.message) nightOff();
+  if (solved) a.message ? cheerMsg(a) : morning();
   render();
 }
 function morning() {
@@ -702,6 +767,16 @@ function morning() {
   box.hidden = false;
   clearTimeout(cheer.t);
   cheer.t = setTimeout(() => (box.hidden = true), 4000);
+}
+function cheerMsg(a) {
+  const box = $("cheer");
+  box.replaceChildren(el("div", { class: "card" },
+    el("div", { class: "big", "aria-hidden": "true" }, "👍"),
+    el("div", { class: "praise" }, "Alarm wyłączony"),
+    el("div", { class: "count msg-text" }, a.message)));
+  box.hidden = false;
+  clearTimeout(cheer.t);
+  cheer.t = setTimeout(() => (box.hidden = true), 6000);
 }
 setInterval(() => { if (!document.hidden) checkAlarm(); }, 10000);
 

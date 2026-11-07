@@ -14,9 +14,11 @@ telefonie może tylko pokazać powiadomienie; ta aplikacja dzwoni jak budzik w Z
 
 - Budziki ustawia rodzic jak dotąd w aplikacji webowej. Aplikacja Android pobiera budziki dziecka funkcją
   `dz_alarm_feed` (migracja `supabase/migrations/007_dz_android_budzik.sql`) z tajnym kluczem urządzenia:
-  co 15 minut oraz po każdym dzwonku, restarcie i zmianie czasu. Następny budzik ustawia w systemie (`setAlarmClock`).
+  co 5 minut oraz po każdym dzwonku, restarcie i zmianie czasu. Następny budzik ustawia w systemie (`setAlarmClock`).
 - Klucz tworzy aplikacja webowa dziecka przyciskiem „📲 Budzik na Androida” (`dz_alarm_link`), który otwiera tę
   aplikację linkiem `dzbudzik://link?s=…`. Gdy aplikacji nie ma, Chrome pobiera APK z najnowszego wydania.
+- Komunikat od rodzica (migracja `008_dz_komunikat.sql`) to jednorazowy budzik z tekstem: gdy aplikacja zobaczy go przy
+  pobieraniu, dzwoni od razu i pokazuje treść wiadomości na ekranie budzika.
 - Tuż przed dzwonkiem aplikacja pyta serwer, czy budzik nadal jest aktualny. Bez internetu dzwoni według ostatnio
   pobranych danych.
 

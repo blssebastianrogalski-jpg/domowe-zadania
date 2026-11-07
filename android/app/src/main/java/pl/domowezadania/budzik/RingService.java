@@ -44,6 +44,8 @@ public class RingService extends Service {
     static volatile boolean ringing = false;
     static volatile String title = "⏰ Pobudka!";
     static volatile boolean test = false;
+    /** The parent's message (komunikat) when this ring is one, else null. */
+    static volatile String message = null;
 
     private final Handler main = new Handler(Looper.getMainLooper());
     private MediaPlayer player;
@@ -67,6 +69,7 @@ public class RingService extends Service {
         id = i.getStringExtra(Alarms.EXTRA_ID);
         at = i.getStringExtra(Alarms.EXTRA_AT);
         test = i.getBooleanExtra(Alarms.EXTRA_TEST, false);
+        message = null;
         long start = i.getLongExtra(Alarms.EXTRA_START, System.currentTimeMillis());
         wake = getSystemService(PowerManager.class).newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "budzik:ring");
         wake.acquire((Alarms.RING_MINUTES + 2) * 60_000);
@@ -83,7 +86,11 @@ public class RingService extends Service {
             JSONObject a = Alarms.alarm(feed, id == null ? "" : id);
             boolean ok = a != null && stillRinging(feed, a);
             String name = feed == null ? "" : feed.optString("name", "");
-            title = "⏰ Pobudka" + (name.isEmpty() ? "" : ", " + name) + "!";
+            if (Alarms.isMessage(a)) {
+                message = a.optString("message", "");
+                String from = a.isNull("from") ? "" : a.optString("from", "");
+                title = from.isEmpty() ? "📢 Wiadomość od rodzica" : "📢 " + from + " pisze:";
+            } else title = "⏰ Pobudka" + (name.isEmpty() ? "" : ", " + name) + "!";
             main.post(ok ? this::ring : this::stop);
         }).start();
         return START_NOT_STICKY;
@@ -94,7 +101,7 @@ public class RingService extends Service {
         if (!a.optBoolean("enabled") || !a.optString("at").equals(at)) return false;
         ZonedDateTime now = ZonedDateTime.now(Alarms.zone(feed));
         LocalDate today = now.toLocalDate();
-        if (!Alarms.hasDay(a, Alarms.dow(today)) || today.toString().equals(a.optString("dismissed_day"))) return false;
+        if (!Alarms.ringsOn(a, today) || today.toString().equals(a.optString("dismissed_day"))) return false;
         try {
             ZonedDateTime from = ZonedDateTime.of(today, LocalTime.parse(at), now.getZone());
             return !now.isBefore(from.minusMinutes(2)) && now.isBefore(from.plusMinutes(Alarms.RING_MINUTES));
@@ -128,7 +135,9 @@ public class RingService extends Service {
         vibrator = Build.VERSION.SDK_INT >= 31 ? getSystemService(VibratorManager.class).getDefaultVibrator() : (Vibrator) getSystemService(Context.VIBRATOR_SERVICE);
         try { vibrator.vibrate(VibrationEffect.createWaveform(pattern, 0), new AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_ALARM).build()); } catch (Exception ignored) {}
 
-        String body = test ? "Tak zadzwoni budzik. Wyłącz go przyciskiem na ekranie." : "Żeby wyłączyć budzik, rozwiąż zadania w aplikacji Domowe Zadania.";
+        String body = test ? "Tak zadzwoni budzik. Wyłącz go przyciskiem na ekranie."
+                : message != null ? message + "\n\nŻeby wyłączyć alarm, rozwiąż zadania w aplikacji Domowe Zadania."
+                : "Żeby wyłączyć budzik, rozwiąż zadania w aplikacji Domowe Zadania.";
         current = notification(title, body, true);
         getSystemService(NotificationManager.class).notify(NOTIF, current);
         try { startActivity(new Intent(this, RingActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)); } catch (Exception ignored) {}

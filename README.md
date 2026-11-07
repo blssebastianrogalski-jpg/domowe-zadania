@@ -37,3 +37,10 @@ Push działa na iOS 16.4+ tylko po dodaniu aplikacji do ekranu początkowego (Sa
 - „🔊 Sprawdź głośność” gra sygnał przez 3 sekundy.
 - Ograniczenia PWA: przy zablokowanym telefonie słychać tylko zwykły dźwięk powiadomienia, raz na minutę. Głośny alarm gra dopiero po otwarciu aplikacji (przeglądarka wymaga stuknięcia). Tryb „Nie przeszkadzać” / skupienie wycisza powiadomienia.
 - Migracja: `supabase/migrations/004_dz_budzik.sql`.
+
+## Komunikat do dziecka
+- Rodzic w widoku „Dla rodzica” → „📢 Komunikat do dziecka” wpisuje wiadomość (do 300 znaków), wybiera dziecko (albo wszystkie dzieci) i sposób wyłączania. Domyślnie ten sam co w budziku dziecka.
+- Komunikat to jednorazowy budzik (`dz_alarms` z `message` i `ring_on`), tworzony funkcją `dz_send_message` według strefy czasowej rodziny. Dzwoni od razu i dokładnie jak budzik: push dwa razy na minutę z treścią wiadomości (`dz-reminders`), pełny ekran z wiadomością i zadaniami w aplikacji, Budzik DZ na Androidzie. Wyłącza go tylko `dz_alarm_answer` (rozwiązane zadania), rodzic przyciskiem „Zatrzymaj” albo upływ 60 minut. Po 15 minutach rodzice dostają znać.
+- Budzik DZ pyta serwer co 5 minut, więc na Androidzie głośny alarm komunikatu zaczyna się najpóźniej po około 5 minutach (w głębokim uśpieniu telefonu do ~10 min). Powiadomienie z Chrome przychodzi w ciągu minuty.
+- Komunikaty starsze niż 30 dni usuwają się przy wysyłaniu kolejnego.
+- Migracja: `supabase/migrations/008_dz_komunikat.sql`, potem ponowne wdrożenie `dz-reminders`.

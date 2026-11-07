@@ -74,16 +74,19 @@ public class MainActivity extends Activity {
         String name = feed == null ? "" : feed.optString("name", "");
         box.addView(Ui.text(this, feed == null ? "Pobieram budziki…" : "Budziki: " + name, 18, Ui.INK, true));
         JSONArray list = feed == null ? null : feed.optJSONArray("alarms");
-        if (list != null && list.length() == 0) box.addView(Ui.text(this, "Rodzic nie ustawił jeszcze budzika.", 16, Ui.MUTED, false));
+        int shown = 0;
         for (int i = 0; list != null && i < list.length(); i++) {
             JSONObject a = list.optJSONObject(i);
+            if (a == null || Alarms.isMessage(a)) continue; // messages ring at once, they are not on the list
+            shown++;
             StringBuilder d = new StringBuilder();
             JSONArray days = a.optJSONArray("days");
             for (int k = 1; k <= 7; k++) if (Alarms.hasDay(a, k % 7)) d.append(d.length() > 0 ? ", " : "").append(WD[k % 7]);
             box.addView(Ui.text(this, a.optString("at") + "   " + d + (a.optBoolean("enabled") ? "" : "   (wyłączony)"), 17, a.optBoolean("enabled") ? Ui.INK : Ui.MUTED, false));
         }
+        if (list != null && shown == 0) box.addView(Ui.text(this, "Rodzic nie ustawił jeszcze budzika.", 16, Ui.MUTED, false));
         Alarms.Next n = Alarms.next(feed);
-        if (n != null) {
+        if (n != null && !Alarms.isMessage(Alarms.alarm(feed, n.id))) {
             ZonedDateTime now = ZonedDateTime.now(n.when.getZone());
             long days = ChronoUnit.DAYS.between(now.toLocalDate(), n.when.toLocalDate());
             String when = days == 0 ? "dziś" : days == 1 ? "jutro" : WD[Alarms.dow(n.when.toLocalDate())];

@@ -117,6 +117,26 @@ try { const k = localStorage.getItem("dz-skin"); if (k && k !== "morski") { docu
       <button type="submit" class="primary">Dodaj zadanie</button>
     </form>
     </details>
+    <details class="panel sect sect-top" id="sect-msg" data-sect="r-komunikat">
+    <summary><span class="sect-title">📢 Komunikat do dziecka</span><span class="sect-count" id="msgs-count"></span></summary>
+    <form class="sect-body" id="msg-form" autocomplete="off">
+      <p class="muted small">Wpisz wiadomość, a u dziecka od razu zadzwoni alarm jak budzik, z Twoją wiadomością na ekranie i w powiadomieniu. Dziecko wyłączy go tak samo jak budzik: rozwiązując zadania. Alarm dzwoni najdłużej godzinę, a jeśli po 15 minutach dalej dzwoni, dostaniesz znać.</p>
+      <label>Wiadomość<textarea id="m-text" rows="3" maxlength="300" required placeholder="Zejdź na obiad! / Oddzwoń do mamy / Czas wracać do domu"></textarea></label>
+      <div class="grid3">
+        <label>Do kogo<select id="m-member" required></select></label>
+        <label>Ile zadań<select id="m-problems"><option value="1">1</option><option value="2" selected>2</option><option value="3">3</option><option value="5">5</option></select></label>
+        <label>Jak wyłączyć<select id="m-kind">
+          <option value="math:1">Matematyka łatwa</option>
+          <option value="math:2">Matematyka do 100</option>
+          <option value="math:3">Tabliczka mnożenia</option>
+          <option value="code:1">Przepisz kod</option>
+        </select></label>
+      </div>
+      <button type="submit" class="primary" id="m-send">📢 Wyślij i włącz alarm</button>
+      <h3>Wysłane</h3>
+      <ul id="msgs" class="rows"></ul>
+    </form>
+    </details>
     <details class="panel sect sect-top" id="sect-alarms" data-sect="r-budziki">
     <summary><span class="sect-title">⏰ Budziki</span><span class="sect-count" id="alarms-count"></span></summary>
     <form class="sect-body" id="alarm-form" autocomplete="off">
@@ -229,6 +249,7 @@ try { const k = localStorage.getItem("dz-skin"); if (k && k !== "morski") { docu
   <div class="alarm-card">
     <div class="al-time" id="al-time"></div>
     <h2 id="al-head">Pobudka!</h2>
+    <p class="al-text" id="al-text" hidden></p>
     <p class="al-sub" id="al-sub">Rozwiąż zadania, żeby wyłączyć budzik.</p>
     <div class="al-dots" id="al-dots" aria-hidden="true"></div>
     <p class="al-progress" id="al-progress"></p>
