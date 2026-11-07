@@ -12,7 +12,8 @@ const json = (body: unknown, status = 200) => new Response(JSON.stringify(body),
 async function latest(member: string): Promise<string> {
   const { data } = await supabase.from("dz_alarms").select("updated_at").eq("member_id", member)
     .order("updated_at", { ascending: false }).limit(1).maybeSingle();
-  return data?.updated_at ?? "";
+  // A child without any alarm yet: a fixed start, so the app waits instead of asking again at once
+  return data?.updated_at ?? "1970-01-01T00:00:00Z";
 }
 
 Deno.serve(async (req) => {
@@ -27,9 +28,9 @@ Deno.serve(async (req) => {
   let at = await latest(link.member_id);
   // First call (no "since"): just tell the app where we are
   if (!since) return json({ changed: false, at });
-  while (Date.parse(at || "0") <= Date.parse(since) && Date.now() - start < WAIT_MS) {
+  while (Date.parse(at) <= Date.parse(since) && Date.now() - start < WAIT_MS) {
     await new Promise((r) => setTimeout(r, STEP_MS));
     at = await latest(link.member_id);
   }
-  return json({ changed: Date.parse(at || "0") > Date.parse(since), at: at || since });
+  return json({ changed: Date.parse(at) > Date.parse(since), at });
 });
