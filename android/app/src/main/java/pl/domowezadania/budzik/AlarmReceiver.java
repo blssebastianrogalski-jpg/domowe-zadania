@@ -12,6 +12,7 @@ public class AlarmReceiver extends BroadcastReceiver {
             Intent s = new Intent(c, RingService.class).putExtras(i).putExtra(Alarms.EXTRA_START, System.currentTimeMillis());
             c.startForegroundService(s);
         } else if (Alarms.ACTION_SYNC.equals(i.getAction())) {
+            WaitService.start(c); // in case Android stopped it
             PendingResult r = goAsync();
             Alarms.syncAsync(c, r::finish);
         }

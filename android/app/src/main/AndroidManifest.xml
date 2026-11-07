@@ -12,6 +12,7 @@
     <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 
     <application
@@ -45,6 +46,12 @@
             android:theme="@android:style/Theme.Material.NoActionBar.Fullscreen" />
 
         <service android:name=".RingService" android:exported="false" android:foregroundServiceType="mediaPlayback" />
+
+        <!-- Keeps one long request open so a parent's message rings within seconds (WaitService) -->
+        <service android:name=".WaitService" android:exported="false" android:foregroundServiceType="specialUse">
+            <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Family alarm clock: waits for a parent's message so the alarm rings within seconds" />
+        </service>
 
         <receiver android:name=".AlarmReceiver" android:exported="false" />
 

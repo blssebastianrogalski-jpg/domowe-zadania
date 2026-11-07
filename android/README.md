@@ -19,6 +19,9 @@ telefonie może tylko pokazać powiadomienie; ta aplikacja dzwoni jak budzik w Z
   aplikację linkiem `dzbudzik://link?s=…`. Gdy aplikacji nie ma, Chrome pobiera APK z najnowszego wydania.
 - Komunikat od rodzica (migracja `008_dz_komunikat.sql`) to jednorazowy budzik z tekstem: gdy aplikacja zobaczy go przy
   pobieraniu, dzwoni od razu i pokazuje treść wiadomości na ekranie budzika.
+- Żeby komunikat zadzwonił w kilka sekund, `WaitService` (cicha usługa z małym stałym powiadomieniem „Budzik DZ czeka na
+  komunikaty”) trzyma otwarte długie zapytanie do funkcji `dz-czekaj`, która odpowiada, gdy tylko zmienią się budziki
+  dziecka. Wtedy aplikacja pobiera budziki i od razu dzwoni. Wymaga wyłączonego oszczędzania baterii dla aplikacji.
 - Tuż przed dzwonkiem aplikacja pyta serwer, czy budzik nadal jest aktualny. Bez internetu dzwoni według ostatnio
   pobranych danych.
 

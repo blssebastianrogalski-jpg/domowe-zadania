@@ -45,7 +45,7 @@ public class MainActivity extends Activity {
 
     @Override protected void onNewIntent(Intent i) { super.onNewIntent(i); handle(i); }
 
-    @Override protected void onResume() { super.onResume(); render(); Alarms.syncAsync(this, () -> runOnUiThread(this::render)); }
+    @Override protected void onResume() { super.onResume(); render(); Alarms.syncAsync(this, () -> runOnUiThread(this::render)); WaitService.start(this); }
 
     /** dzbudzik://link?s=SECRET from the web app's button. */
     private void handle(Intent i) {
@@ -55,6 +55,7 @@ public class MainActivity extends Activity {
         if (s == null || s.length() < 32) return;
         Alarms.prefs(this).edit().putString("secret", s).remove("feed").putBoolean("unlinked", false).apply();
         Toast.makeText(this, "Połączono z Domowymi Zadaniami.", Toast.LENGTH_LONG).show();
+        WaitService.start(this);
         Alarms.syncAsync(this, () -> runOnUiThread(this::render));
     }
 

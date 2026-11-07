@@ -8,6 +8,7 @@ import android.content.Intent;
 public class BootReceiver extends BroadcastReceiver {
     @Override public void onReceive(Context c, Intent i) {
         Alarms.schedule(c);
+        WaitService.start(c);
         PendingResult r = goAsync();
         Alarms.syncAsync(c, r::finish);
     }
