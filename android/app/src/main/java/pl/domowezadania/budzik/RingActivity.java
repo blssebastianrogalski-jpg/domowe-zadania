@@ -43,7 +43,18 @@ public class RingActivity extends Activity {
                 ? "To próbny budzik. Tak głośno zadzwoni rano, także przy wyciszonym telefonie."
                 : "Budzik ucichnie, gdy rozwiążesz zadania w aplikacji Domowe Zadania.", 18, Color.rgb(209, 213, 219), false);
         info.setGravity(Gravity.CENTER);
-        root.addView(clock); root.addView(head); root.addView(info);
+        root.addView(clock); root.addView(head);
+        String msg = RingService.message;
+        if (msg != null && !RingService.test) {
+            // The parent's message, big and readable, like on the web app's ring screen
+            TextView m = Ui.text(this, msg, 26, Color.rgb(17, 24, 39), true);
+            m.setGravity(Gravity.CENTER);
+            m.setBackgroundColor(Color.WHITE);
+            int q = Ui.dp(this, 16); m.setPadding(q, q, q, q);
+            info.setText("Alarm ucichnie, gdy rozwiążesz zadania w aplikacji Domowe Zadania.");
+            root.addView(m);
+        }
+        root.addView(info);
 
         if (RingService.test) {
             root.addView(Ui.button(this, "Wyłącz próbny budzik", Ui.RED, Color.WHITE,

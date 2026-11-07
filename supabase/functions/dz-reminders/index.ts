@@ -4,7 +4,8 @@
 //  - help requests and finished tasks of children (to parents' devices),
 //  - nudges at fixed times (NUDGE_AT): one summary per child of today's unfinished tasks and homework due tomorrow,
 //  - ringing alarms (budzik): twice a minute to the child until the challenge is solved, for at most 60 minutes;
-//    once to parents if it is still ringing after 15 minutes.
+//    once to parents if it is still ringing after 15 minutes. A parent's message (komunikat) is a one-day alarm
+//    with a text: it rings the same way and its text is the notification's body.
 import { createClient } from "npm:@supabase/supabase-js@2.45.4";
 import webpush from "npm:web-push@3.6.7";
 
@@ -16,7 +17,8 @@ type Task = {
   snooze_notified_at: string | null; remind_notified_day: string | null; help_notified_at: string | null; done_notified_day: string | null;
 };
 
-type Alarm = { id: string; family_id: string; member_id: string; at: string; days: number[]; challenge: string; dismissed_day: string | null };
+type Alarm = { id: string; family_id: string; member_id: string; at: string; days: number[]; challenge: string; dismissed_day: string | null;
+  message?: string | null; ring_on?: string | null; sent_by?: string | null };
 
 function localNow(tz: string) {
   const parts = Object.fromEntries(new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" })
@@ -141,17 +143,22 @@ Deno.serve(async (req) => {
   for (const a of (alarms ?? []) as Alarm[]) {
     const { day, hm, dow } = localNow(tzOf.get(a.family_id) ?? "Europe/Warsaw");
     const since = toMin(hm) - toMin(a.at);
-    if (!a.days.includes(dow) || since < 0 || since >= 60 || a.dismissed_day === day) continue;
+    if (!a.days.includes(dow) || (a.ring_on && a.ring_on !== day) || since < 0 || since >= 60 || a.dismissed_day === day) continue;
     const who = memberOf.get(a.member_id)?.name ?? "";
-    const ring = { targets: subsFor((d) => d.member_id === a.member_id, a.family_id), payload:
-      { title: "⏰ Pobudka" + (who ? ", " + who : "") + "!", body: "Budzik dzwoni od " + a.at.slice(0, 5) + ". Otwórz aplikację i rozwiąż " + (a.challenge === "code" ? "kod" : "zadania") + ", żeby go wyłączyć.", task: "alarm-" + a.id, kind: "alarm" } };
+    const solve = (a.challenge === "code" ? "przepisz kod" : "rozwiąż zadania") + ", żeby wyłączyć alarm.";
+    const from = a.sent_by ? memberOf.get(a.sent_by)?.name : "";
+    const ring = { targets: subsFor((d) => d.member_id === a.member_id, a.family_id), payload: a.message
+      ? { title: from ? "📢 " + from + " pisze:" : "📢 Wiadomość od rodzica", body: a.message + "\n\nOtwórz aplikację i " + solve, task: "alarm-" + a.id, kind: "alarm" }
+      : { title: "⏰ Pobudka" + (who ? ", " + who : "") + "!", body: "Budzik dzwoni od " + a.at.slice(0, 5) + ". Otwórz aplikację i rozwiąż " + (a.challenge === "code" ? "kod" : "zadania") + ", żeby go wyłączyć.", task: "alarm-" + a.id, kind: "alarm" } };
     await push(ring.targets, ring.payload, 30);
     rings.set(a.id, { ...ring, day });
     if (since >= 15) {
       const { data: ring } = await supabase.from("dz_alarm_rings").select("parent_notified_at").eq("alarm_id", a.id).eq("day", day).maybeSingle();
       if (!ring?.parent_notified_at) {
         const parents = subsFor((d) => d.member_id !== null && memberOf.get(d.member_id!)?.role === "parent", a.family_id);
-        await push(parents, { title: `${who || "Dziecko"} jeszcze nie wyłączył(a) budzika`, body: "Dzwoni od " + a.at.slice(0, 5) + ".", task: "alarm-" + a.id, kind: "help" });
+        await push(parents, a.message
+          ? { title: `${who || "Dziecko"} jeszcze nie wyłączył(a) komunikatu`, body: "„" + a.message + "” dzwoni od " + a.at.slice(0, 5) + ".", task: "alarm-" + a.id, kind: "help" }
+          : { title: `${who || "Dziecko"} jeszcze nie wyłączył(a) budzika`, body: "Dzwoni od " + a.at.slice(0, 5) + ".", task: "alarm-" + a.id, kind: "help" });
         await supabase.from("dz_alarm_rings").upsert({ alarm_id: a.id, day, parent_notified_at: new Date().toISOString() });
       }
     }
