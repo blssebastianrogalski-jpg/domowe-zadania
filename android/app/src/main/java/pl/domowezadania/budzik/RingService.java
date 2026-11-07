@@ -37,6 +37,8 @@ import java.time.ZonedDateTime;
 public class RingService extends Service {
     static final String ACTION_STOP_TEST = "pl.domowezadania.budzik.STOP_TEST";
     static final String ACTION_STOPPED = "pl.domowezadania.budzik.STOPPED";
+    /** The child solved the challenge on the ring screen: the server already turned the alarm off. */
+    static final String ACTION_SOLVED = "pl.domowezadania.budzik.SOLVED";
     static final String CHANNEL = "budzik";
     static final int NOTIF = 7;
     static final long POLL_MS = 15_000, TEST_MS = 30_000;
@@ -46,6 +48,8 @@ public class RingService extends Service {
     static volatile boolean test = false;
     /** The parent's message (komunikat) when this ring is one, else null. */
     static volatile String message = null;
+    /** The ringing alarm's id, for solving its challenge on the ring screen. */
+    static volatile String alarmId = null;
 
     private final Handler main = new Handler(Looper.getMainLooper());
     private MediaPlayer player;
@@ -61,6 +65,7 @@ public class RingService extends Service {
 
     @Override public int onStartCommand(Intent i, int flags, int startId) {
         if (i != null && ACTION_STOP_TEST.equals(i.getAction())) { if (test && active) stop(); return START_NOT_STICKY; }
+        if (i != null && ACTION_SOLVED.equals(i.getAction())) { if (active && !test) stop(); return START_NOT_STICKY; }
         // Every start through startForegroundService must be answered with startForeground, also a repeated one
         if (current == null) current = notification("Budzik", "Sprawdzam budzik…", false);
         startForegroundCompat(current);
@@ -70,6 +75,7 @@ public class RingService extends Service {
         at = i.getStringExtra(Alarms.EXTRA_AT);
         test = i.getBooleanExtra(Alarms.EXTRA_TEST, false);
         message = null;
+        alarmId = id;
         long start = i.getLongExtra(Alarms.EXTRA_START, System.currentTimeMillis());
         wake = getSystemService(PowerManager.class).newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "budzik:ring");
         wake.acquire((Alarms.RING_MINUTES + 2) * 60_000);
@@ -136,8 +142,8 @@ public class RingService extends Service {
         try { vibrator.vibrate(VibrationEffect.createWaveform(pattern, 0), new AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_ALARM).build()); } catch (Exception ignored) {}
 
         String body = test ? "Tak zadzwoni budzik. Wyłącz go przyciskiem na ekranie."
-                : message != null ? message + "\n\nŻeby wyłączyć alarm, rozwiąż zadania w aplikacji Domowe Zadania."
-                : "Żeby wyłączyć budzik, rozwiąż zadania w aplikacji Domowe Zadania.";
+                : message != null ? message + "\n\nŻeby wyłączyć alarm, rozwiąż zadania na ekranie budzika."
+                : "Żeby wyłączyć budzik, rozwiąż zadania na ekranie budzika.";
         current = notification(title, body, true);
         getSystemService(NotificationManager.class).notify(NOTIF, current);
         try { startActivity(new Intent(this, RingActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)); } catch (Exception ignored) {}

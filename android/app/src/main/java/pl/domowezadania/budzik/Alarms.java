@@ -76,6 +76,29 @@ final class Alarms {
         } finally { if (h != null) h.disconnect(); }
     }
 
+    /** Calls a database function with the device secret added as p_secret (blocking). Null on a network or server error. */
+    static JSONObject rpc(Context c, String fn, JSONObject args) {
+        String secret = secret(c);
+        if (secret == null) return null;
+        HttpURLConnection h = null;
+        try {
+            args.put("p_secret", secret);
+            h = (HttpURLConnection) new URL(SUPABASE_URL + "/rest/v1/rpc/" + fn).openConnection();
+            h.setConnectTimeout(8000); h.setReadTimeout(8000);
+            h.setRequestMethod("POST");
+            h.setRequestProperty("apikey", SUPABASE_KEY);
+            h.setRequestProperty("Content-Type", "application/json");
+            h.setDoOutput(true);
+            try (OutputStream o = h.getOutputStream()) { o.write(args.toString().getBytes(StandardCharsets.UTF_8)); }
+            if (h.getResponseCode() != 200) return null;
+            ByteArrayOutputStream b = new ByteArrayOutputStream();
+            try (InputStream in = h.getInputStream()) { byte[] buf = new byte[4096]; int n; while ((n = in.read(buf)) > 0) b.write(buf, 0, n); }
+            return new JSONObject(b.toString("UTF-8"));
+        } catch (Exception e) {
+            return null;
+        } finally { if (h != null) h.disconnect(); }
+    }
+
     static ZoneId zone(JSONObject feed) {
         try { return ZoneId.of(feed.optString("tz", "Europe/Warsaw")); } catch (Exception e) { return ZoneId.systemDefault(); }
     }
