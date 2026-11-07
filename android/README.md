@@ -7,8 +7,10 @@ telefonie może tylko pokazać powiadomienie; ta aplikacja dzwoni jak budzik w Z
   (jeśli tryb dopuszcza alarmy, tak jest domyślnie); głośność alarmu idzie na maksimum na czas dzwonienia,
 - budzik na cały ekran nad ekranem blokady, wibracje,
 - dźwięk do wyboru w aplikacji: dźwięk telefonu albo własna piosenka (domyślnie dźwięk alarmu telefonu),
-- wyłącza się dopiero, gdy dziecko rozwiąże zadania w aplikacji Domowe Zadania (serwer zapisuje wyłączenie,
-  aplikacja sprawdza to co 15 s), gdy rodzic wyłączy budzik, albo po 60 minutach.
+- wyłącza się dopiero, gdy dziecko rozwiąże zadania: na ekranie budzika (także na zablokowanym telefonie, bez Chrome,
+  funkcje `dz_alarm_challenge_link` / `dz_alarm_answer_link` z migracji `010_dz_budzik_bez_chrome.sql`) albo w aplikacji
+  Domowe Zadania; gdy rodzic wyłączy budzik, albo po 60 minutach. Działa też, gdy Family Link wstrzymał Chrome:
+  w Family Link wystarczy ustawić Budzik DZ jako „Zawsze dozwolona”.
 
 ## Jak działa
 
