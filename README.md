@@ -41,6 +41,6 @@ Push działa na iOS 16.4+ tylko po dodaniu aplikacji do ekranu początkowego (Sa
 ## Komunikat do dziecka
 - Rodzic w widoku „Dla rodzica” → „📢 Komunikat do dziecka” wpisuje wiadomość (do 300 znaków), wybiera dziecko (albo wszystkie dzieci) i sposób wyłączania. Domyślnie ten sam co w budziku dziecka.
 - Komunikat to jednorazowy budzik (`dz_alarms` z `message` i `ring_on`), tworzony funkcją `dz_send_message` według strefy czasowej rodziny. Dzwoni od razu i dokładnie jak budzik: push dwa razy na minutę z treścią wiadomości (`dz-reminders`), pełny ekran z wiadomością i zadaniami w aplikacji, Budzik DZ na Androidzie. Wyłącza go tylko `dz_alarm_answer` (rozwiązane zadania), rodzic przyciskiem „Zatrzymaj” albo upływ 60 minut. Po 15 minutach rodzice dostają znać.
-- Budzik DZ pyta serwer co 5 minut, więc na Androidzie głośny alarm komunikatu zaczyna się najpóźniej po około 5 minutach (w głębokim uśpieniu telefonu do ~10 min). Powiadomienie z Chrome przychodzi w ciągu minuty.
+- W kilka sekund: po wysłaniu komunikatu baza sama woła `dz-reminders` z `{"ring": id}` (wyzwalacz z migracji `009_dz_komunikat_od_razu.sql`), więc powiadomienie nie czeka na minutowego crona. Budzik DZ trzyma otwarte długie zapytanie do funkcji `dz-czekaj` (wdrażana z wyłączoną weryfikacją JWT, sprawdza tajny klucz urządzenia), która odpowiada, gdy tylko zmienią się budziki dziecka. Sprawdzanie co 5 minut zostaje jako zapas.
 - Komunikaty starsze niż 30 dni usuwają się przy wysyłaniu kolejnego.
 - Migracja: `supabase/migrations/008_dz_komunikat.sql`, potem ponowne wdrożenie `dz-reminders`.

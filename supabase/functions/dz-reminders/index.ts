@@ -5,7 +5,8 @@
 //  - nudges at fixed times (NUDGE_AT): one summary per child of today's unfinished tasks and homework due tomorrow,
 //  - ringing alarms (budzik): twice a minute to the child until the challenge is solved, for at most 60 minutes;
 //    once to parents if it is still ringing after 15 minutes. A parent's message (komunikat) is a one-day alarm
-//    with a text: it rings the same way and its text is the notification's body.
+//    with a text: it rings the same way and its text is the notification's body. Right after a message is sent the
+//    database calls this function with {"ring": id} (migration 009): then only that message rings, at once.
 import { createClient } from "npm:@supabase/supabase-js@2.45.4";
 import webpush from "npm:web-push@3.6.7";
 
@@ -52,13 +53,17 @@ Deno.serve(async (req) => {
   }
   conf.vapid_subject ??= "https://blssebastianrogalski-jpg.github.io/domowe-zadania/";
   webpush.setVapidDetails(conf.vapid_subject, conf.vapid_public, conf.vapid_private);
+  // {"ring": id}: only this alarm, nothing else (tasks and nudges stay with the minute cron)
+  let only: string | null = null;
+  try { const b = await req.json(); if (typeof b?.ring === "string") only = b.ring; } catch { /* cron sends {} */ }
 
   const { data: families } = await supabase.from("dz_families").select("id,tz");
-  const { data: tasks } = await supabase.from("dz_tasks").select("*");
+  const { data: tasks } = only ? { data: [] } : await supabase.from("dz_tasks").select("*");
   const { data: devices } = await supabase.from("dz_devices").select("user_id,family_id,member_id");
   const { data: members } = await supabase.from("dz_members").select("id,name,role,family_id");
   const { data: subs } = await supabase.from("dz_push_subs").select("*");
-  const { data: alarms } = await supabase.from("dz_alarms").select("*").eq("enabled", true);
+  const { data: alarms } = only ? await supabase.from("dz_alarms").select("*").eq("enabled", true).eq("id", only)
+    : await supabase.from("dz_alarms").select("*").eq("enabled", true);
   const tzOf = new Map((families ?? []).map((f) => [f.id, f.tz]));
   const memberOf = new Map((members ?? []).map((m) => [m.id, m]));
 
@@ -115,7 +120,7 @@ Deno.serve(async (req) => {
   // Nudges: the cron runs every minute, so a nudge fires in the minute matching one of the times
   const nudgeAt = conf.nudge_times ? conf.nudge_times.split(",").map((x) => x.trim()) : NUDGE_AT;
   for (const m of members ?? []) {
-    if (m.role !== "child") continue;
+    if (only || m.role !== "child") continue;
     const { day, hm, dow } = localNow(tzOf.get(m.family_id) ?? "Europe/Warsaw");
     if (!nudgeAt.includes(hm)) continue;
     const tomorrow = nextDay(day);
@@ -164,7 +169,7 @@ Deno.serve(async (req) => {
     }
   }
   // Cron runs once a minute: ring once more half a minute later, unless the child turned the alarm off meanwhile
-  if (rings.size) {
+  if (rings.size && !only) {
     const again = (async () => {
       await new Promise((r) => setTimeout(r, 30_000));
       const { data: still } = await supabase.from("dz_alarms").select("id,dismissed_day,enabled").in("id", [...rings.keys()]);
