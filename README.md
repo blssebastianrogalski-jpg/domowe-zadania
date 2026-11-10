@@ -6,6 +6,7 @@ Rodzinna aplikacja do obowiązków domowych: jedno zadanie naraz, „Przypomnij 
 - **Front-end**: statyczne pliki (`index.html`, `app.js`, `styles.css`, `sw.js`), hostowane na GitHub Pages.
 - **Baza i logowanie**: Supabase. Każdy telefon loguje się anonimowo i dołącza do rodziny kodem zaproszenia. Dostęp pilnują reguły RLS (`supabase/migrations/001_domowe_zadania.sql`).
 - **Przypomnienia**: funkcja `supabase/functions/dz-reminders` uruchamiana co minutę przez `pg_cron` wysyła Web Push: po odłożeniu zadania, o godzinie pierwszego przypomnienia i przy prośbie o pomoc (do rodziców).
+- **Uporczywe przypomnienia**: jeśli dziecko nic nie zrobi, przypomnienie o zadaniu (i powrót odłożonego zadania) wraca co 5 minut przez najwyżej 2 godziny, aż zadanie będzie zrobione, rozpoczęte albo odłożone. Odłożenie zatrzymuje powtórki bez kary. Każde powtórzenie to nowe powiadomienie (dźwięk i długa wibracja), zostaje na ekranie, ma przyciski „Zrobione” i „Za 15 min”. Zmiana: `dz_config` klucze `remind_every` (minuty) i `remind_for` (minuty). Aplikacja przy każdym otwarciu sama odnawia rejestrację powiadomień.
 
 ## iPhone
 Push działa na iOS 16.4+ tylko po dodaniu aplikacji do ekranu początkowego (Safari → Udostępnij → Do ekranu początkowego).

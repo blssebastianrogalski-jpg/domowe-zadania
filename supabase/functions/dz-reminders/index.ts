@@ -1,6 +1,8 @@
 // Runs every minute (pg_cron -> pg_net). Sends Web Push for:
 //  - snoozed tasks whose snooze time has passed,
 //  - daily first reminders (remind_at) not yet sent today (only on the task's chosen weekdays, if any),
+//  - repeats of a task reminder (and of a returned snooze) every REMIND_EVERY minutes until the child marks the task
+//    done, starts it or snoozes it again, for at most REMIND_FOR minutes. Snoozing stops the repeats without penalty,
 //  - help requests and finished tasks of children (to parents' devices),
 //  - nudges at fixed times (NUDGE_AT): one summary per child of today's unfinished tasks and homework due tomorrow,
 //  - ringing alarms (budzik): twice a minute to the child until the challenge is solved, for at most 60 minutes;
@@ -31,6 +33,8 @@ function localNow(tz: string) {
 // Times (family local) of the summary nudge: every 30 minutes from 15:00 to 20:30;
 // dz_config key nudge_times overrides, e.g. "16:00,18:00,19:30"
 const NUDGE_AT = Array.from({ length: 12 }, (_, i) => `${String(15 + Math.floor(i / 2)).padStart(2, "0")}:${i % 2 ? "30" : "00"}`);
+// Persistent task reminders: repeat every 5 minutes for up to 2 hours; dz_config keys remind_every / remind_for override
+const REMIND_EVERY = 5, REMIND_FOR = 120;
 const nextDay = (day: string) => { const d = new Date(day + "T12:00:00Z"); d.setUTCDate(d.getUTCDate() + 1); return d.toISOString().slice(0, 10); };
 
 // Repeating task limited to chosen weekdays (0 = Sunday): no reminders on the other days
@@ -72,17 +76,27 @@ Deno.serve(async (req) => {
     return (subs ?? []).filter((s) => users.has(s.user_id));
   };
 
-  let sent = 0;
+  let sent = 0, failed = 0;
   async function push(targets: any[], payload: Record<string, unknown>, ttl = 600) {
     for (const s of targets) {
       try {
         await webpush.sendNotification({ endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } }, JSON.stringify(payload), { TTL: ttl, urgency: "high" });
         sent++;
       } catch (e: any) {
+        failed++;
+        // A gone subscription is removed; the app subscribes again by itself the next time it is opened
+        console.error("push failed", e?.statusCode ?? "", String(e?.body ?? e?.message ?? e).slice(0, 200), s.endpoint.slice(0, 50));
         if (e?.statusCode === 404 || e?.statusCode === 410) await supabase.from("dz_push_subs").delete().eq("endpoint", s.endpoint);
       }
     }
   }
+  const nudgeAt = conf.nudge_times ? conf.nudge_times.split(",").map((x) => x.trim()) : NUDGE_AT;
+  const every = Math.max(1, Number(conf.remind_every) || REMIND_EVERY), keepFor = Math.max(0, Number(conf.remind_for) || REMIND_FOR);
+  const toMin = (t: string) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5));
+  // n-th repeat if `since` minutes after the first reminder is a repeat minute, else 0. Not in a nudge minute: the
+  // summary already rings then, two sounds at once help nobody.
+  const repeatNo = (since: number, hm: string) => since > 0 && since <= keepFor && since % every === 0 && !nudgeAt.includes(hm) ? since / every : 0;
+  const dueText = (t: Task) => t.due ? `Termin przed ${t.due.slice(0, 5)}. ` : "";
 
   const now = Date.now();
   for (const t of (tasks ?? []) as Task[]) {
@@ -94,12 +108,20 @@ Deno.serve(async (req) => {
         (!t.snooze_notified_at || Date.parse(t.snooze_notified_at) < Date.parse(t.snooze_until))) {
       await push(forMember(), { title: "Wracamy do zadania", body: t.title + (t.due ? ` · termin przed ${t.due.slice(0, 5)}` : ""), task: t.id, kind: "snooze" });
       await supabase.from("dz_tasks").update({ snooze_notified_at: new Date().toISOString() }).eq("id", t.id);
+    } else if (st === "snoozed" && t.snooze_until && t.snooze_notified_at && Date.parse(t.snooze_notified_at) >= Date.parse(t.snooze_until)) {
+      // The snooze came back and the child did nothing yet: keep reminding until done or snoozed again
+      const n = repeatNo(Math.floor((now - Date.parse(t.snooze_until)) / 60000), hm);
+      if (n) await push(forMember(), { title: "⏰ Nadal czeka: " + t.title, body: dueText(t) + "Zrób teraz albo odłóż jeszcze raz, bez kary.", task: t.id, kind: "snooze", repeat: n });
     }
 
     if (t.remind_at && st === "todo" && !offDay(t, dow) && t.remind_notified_day !== day && t.remind_at.slice(0, 5) <= hm &&
         (t.repeat === "daily" || !t.status_day || t.status_day <= day)) {
       await push(forMember(), { title: "Czas na: " + t.title, body: t.due ? `Termin przed ${t.due.slice(0, 5)}. Możesz odłożyć.` : "Możesz zrobić teraz albo odłożyć.", task: t.id, kind: "remind" });
       await supabase.from("dz_tasks").update({ remind_notified_day: day }).eq("id", t.id);
+    } else if (t.remind_at && st === "todo" && !offDay(t, dow) && t.remind_notified_day === day) {
+      // First reminder went out today and the task is still waiting: repeat it every few minutes
+      const n = repeatNo(toMin(hm) - toMin(t.remind_at), hm);
+      if (n) await push(forMember(), { title: "⏰ Nadal czeka: " + t.title, body: dueText(t) + "Zrób teraz albo odłóż na później, bez kary.", task: t.id, kind: "remind", repeat: n });
     }
 
     if (st === "help" && !t.help_notified_at) {
@@ -118,7 +140,6 @@ Deno.serve(async (req) => {
     }
   }
   // Nudges: the cron runs every minute, so a nudge fires in the minute matching one of the times
-  const nudgeAt = conf.nudge_times ? conf.nudge_times.split(",").map((x) => x.trim()) : NUDGE_AT;
   for (const m of members ?? []) {
     if (only || m.role !== "child") continue;
     const { day, hm, dow } = localNow(tzOf.get(m.family_id) ?? "Europe/Warsaw");
@@ -143,7 +164,6 @@ Deno.serve(async (req) => {
   }
 
   // Alarms: minutes since the set time, today's local weekday, not yet dismissed today
-  const toMin = (t: string) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5));
   const rings = new Map<string, { targets: any[]; payload: Record<string, unknown>; day: string }>();
   for (const a of (alarms ?? []) as Alarm[]) {
     const { day, hm, dow } = localNow(tzOf.get(a.family_id) ?? "Europe/Warsaw");
@@ -181,5 +201,5 @@ Deno.serve(async (req) => {
     // @ts-ignore EdgeRuntime is the Supabase edge runtime global
     if (typeof EdgeRuntime !== "undefined") EdgeRuntime.waitUntil(again); else await again;
   }
-  return new Response(JSON.stringify({ ok: true, sent }), { headers: { "content-type": "application/json" } });
+  return new Response(JSON.stringify({ ok: true, sent, failed }), { headers: { "content-type": "application/json" } });
 });
