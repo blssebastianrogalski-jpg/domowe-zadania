@@ -978,20 +978,32 @@ $("switch-lock").addEventListener("submit", (e) => {
 });
 
 function b64urlToUint8(s) { const p = "=".repeat((4 - (s.length % 4)) % 4); const b = atob((s + p).replace(/-/g, "+").replace(/_/g, "/")); return Uint8Array.from(b, (c) => c.charCodeAt(0)); }
+// Subscribes (if needed) and stores this phone's push address on the server
+async function savePushSub() {
+  const reg = await navigator.serviceWorker.ready;
+  let sub = await reg.pushManager.getSubscription();
+  if (!sub) {
+    const { data: key, error: keyErr } = await sb.rpc("dz_vapid_public");
+    if (keyErr || !key) throw new Error("serwer powiadomień nie jest jeszcze gotowy");
+    sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64urlToUint8(key) });
+  }
+  const j = sub.toJSON();
+  const { error } = await sb.from("dz_push_subs").upsert({ endpoint: j.endpoint, user_id: S.uid, family_id: S.family.id, p256dh: j.keys.p256dh, auth: j.keys.auth });
+  if (error) throw error;
+}
+// On every start, quietly: the browser can change the push address, and the server drops one that stopped working.
+// Without this the phone would stop getting reminders until someone tapped "Odśwież rejestrację powiadomień".
+async function syncPush() {
+  try {
+    if (!S.device || !S.family || !("serviceWorker" in navigator) || !("PushManager" in window) || !("Notification" in window) || Notification.permission !== "granted") return;
+    await savePushSub();
+  } catch { /* silent: Settings still has the button and shows errors */ }
+}
 async function enablePush() {
   try {
     const perm = await Notification.requestPermission();
     if (perm !== "granted") { toast("Bez zgody na powiadomienia przypomnienia przyjdą tylko przy otwartej aplikacji."); render(); return; }
-    const reg = await navigator.serviceWorker.ready;
-    let sub = await reg.pushManager.getSubscription();
-    if (!sub) {
-      const { data: key, error: keyErr } = await sb.rpc("dz_vapid_public");
-      if (keyErr || !key) throw new Error("serwer powiadomień nie jest jeszcze gotowy");
-      sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64urlToUint8(key) });
-    }
-    const j = sub.toJSON();
-    const { error } = await sb.from("dz_push_subs").upsert({ endpoint: j.endpoint, user_id: S.uid, family_id: S.family.id, p256dh: j.keys.p256dh, auth: j.keys.auth });
-    if (error) throw error;
+    await savePushSub();
     toast("Powiadomienia włączone.");
   } catch (e) { toast("Nie udało się włączyć powiadomień: " + errMsg(e)); }
   render();
@@ -1001,8 +1013,9 @@ $("notif-on").onclick = enablePush;
 $("notif-test").onclick = async () => {
   if (!("Notification" in window) || Notification.permission !== "granted") { toast("Najpierw włącz powiadomienia."); return; }
   const reg = await navigator.serviceWorker.ready;
-  await reg.showNotification("📋 Próbne przypomnienie", { body: "Tak będą wyglądać przypomnienia o zadaniach.", icon: "icons/icon-192.png", badge: "icons/badge-96.png", tag: "test", renotify: true, requireInteraction: true, silent: false, vibrate: [400, 200, 400] });
-  toast("Wysłane. Jeśli nie było dźwięku, sprawdź ustawienia powiadomień telefonu.");
+  // Through the worker, so it is exactly the notification a real reminder makes (sound, long vibration, buttons)
+  (reg.active || navigator.serviceWorker.controller)?.postMessage({ type: "remind-test", delay: 0 });
+  toast("Wysłane. Jeśli nie było dźwięku ani wibracji, sprawdź ustawienia powiadomień telefonu.");
 };
 
 // Actions from a tapped notification: ?task=<id>&a=done|snooze15 (snooze20 kept for notifications sent before the change)
@@ -1037,4 +1050,5 @@ navigator.serviceWorker?.addEventListener("message", async (e) => { if (e.data?.
   subscribe();
   await handleUrlAction();
   render();
+  syncPush();
 })();
