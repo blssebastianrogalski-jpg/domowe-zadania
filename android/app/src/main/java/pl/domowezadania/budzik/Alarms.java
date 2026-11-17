@@ -22,7 +22,7 @@ import java.time.LocalTime;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
 
-/** The child's alarms: read from the server with the device secret, kept on the phone, scheduled as real alarm clocks. */
+/** The member's alarms (and the app's connection to the server): read from the server with the device secret, kept on the phone, scheduled as real alarm clocks. */
 final class Alarms {
     static final String SUPABASE_URL = "https://jfirrtnbpshtijdqankt.supabase.co";
     static final String SUPABASE_KEY = "sb_publishable_UHW9kVafsscGUjYZdHXM-g_YxKN0E3N";
@@ -45,6 +45,13 @@ final class Alarms {
     }
 
     static String secret(Context c) { return prefs(c).getString("secret", null); }
+    static boolean linked(Context c) { return secret(c) != null && !prefs(c).getBoolean("unlinked", false); }
+
+    /** Stores a new device secret (from the web app, inside the app or from Chrome) and starts over with it. */
+    static void link(Context c, String secret, String member) {
+        prefs(c).edit().putString("secret", secret).putString("member", member).remove("feed")
+                .putLong("inbox_after", 0).putBoolean("unlinked", false).apply();
+    }
 
     static JSONObject cached(Context c) {
         try { String s = prefs(c).getString("feed", null); return s == null ? null : new JSONObject(s); } catch (Exception e) { return null; }
@@ -78,6 +85,11 @@ final class Alarms {
 
     /** Calls a database function with the device secret added as p_secret (blocking). Null on a network or server error. */
     static JSONObject rpc(Context c, String fn, JSONObject args) {
+        try { String b = rpcRaw(c, fn, args); return b == null ? null : new JSONObject(b); } catch (Exception e) { return null; }
+    }
+
+    /** Same as rpc, but returns the raw response body (a function may return null, true or an object). */
+    static String rpcRaw(Context c, String fn, JSONObject args) {
         String secret = secret(c);
         if (secret == null) return null;
         HttpURLConnection h = null;
@@ -93,7 +105,7 @@ final class Alarms {
             if (h.getResponseCode() != 200) return null;
             ByteArrayOutputStream b = new ByteArrayOutputStream();
             try (InputStream in = h.getInputStream()) { byte[] buf = new byte[4096]; int n; while ((n = in.read(buf)) > 0) b.write(buf, 0, n); }
-            return new JSONObject(b.toString("UTF-8"));
+            return b.toString("UTF-8").trim();
         } catch (Exception e) {
             return null;
         } finally { if (h != null) h.disconnect(); }
@@ -204,9 +216,9 @@ final class Alarms {
         return n;
     }
 
-    /** Off the main thread: fetch, then schedule. */
+    /** Off the main thread: fetch, then schedule, then show new notifications (task reminders etc.). */
     static void syncAsync(Context c, Runnable done) {
         Context app = c.getApplicationContext();
-        new Thread(() -> { fetch(app); schedule(app); if (done != null) done.run(); }).start();
+        new Thread(() -> { fetch(app); schedule(app); Inbox.fetch(app); if (done != null) done.run(); }).start();
     }
 }

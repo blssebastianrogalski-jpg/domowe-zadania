@@ -45,3 +45,9 @@ Push działa na iOS 16.4+ tylko po dodaniu aplikacji do ekranu początkowego (Sa
 - W kilka sekund: po wysłaniu komunikatu baza sama woła `dz-reminders` z `{"ring": id}` (wyzwalacz z migracji `009_dz_komunikat_od_razu.sql`), więc powiadomienie nie czeka na minutowego crona. Budzik DZ trzyma otwarte długie zapytanie do funkcji `dz-czekaj` (wdrażana z wyłączoną weryfikacją JWT, sprawdza tajny klucz urządzenia), która odpowiada, gdy tylko zmienią się budziki dziecka. Sprawdzanie co 5 minut zostaje jako zapas.
 - Komunikaty starsze niż 30 dni usuwają się przy wysyłaniu kolejnego.
 - Migracja: `supabase/migrations/008_dz_komunikat.sql`, potem ponowne wdrożenie `dz-reminders`.
+
+## Aplikacja na Androida
+
+Folder `android/`: cała aplikacja w WebView z natywnymi powiadomieniami (bez Chrome i Web Push, przez skrzynkę
+`dz_native_inbox` z migracji `011_dz_android_powiadomienia.sql` i długie zapytanie `dz-czekaj`), budzikiem i ekranem
+ustawień telefonu z krokami dla Xiaomi. Szczegóły w `android/README.md`.

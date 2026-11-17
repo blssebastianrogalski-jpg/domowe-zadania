@@ -22,7 +22,9 @@
         android:supportsRtl="true"
         android:theme="@android:style/Theme.Material.Light.NoActionBar">
 
-        <activity android:name=".MainActivity" android:exported="true" android:launchMode="singleTask">
+        <!-- The whole app: the web app in a WebView with native notifications (MainActivity.java) -->
+        <activity android:name=".MainActivity" android:exported="true" android:launchMode="singleTask"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|uiMode">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
@@ -35,6 +37,9 @@
                 <data android:scheme="dzbudzik" android:host="link" />
             </intent-filter>
         </activity>
+
+        <!-- Phone settings (Xiaomi steps), tests, alarms and their sound -->
+        <activity android:name=".SetupActivity" android:exported="false" android:label="Ustawienia telefonu" />
 
         <activity
             android:name=".RingActivity"

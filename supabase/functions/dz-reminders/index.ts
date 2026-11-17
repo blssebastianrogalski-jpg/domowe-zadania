@@ -9,6 +9,11 @@
 //    once to parents if it is still ringing after 15 minutes. A parent's message (komunikat) is a one-day alarm
 //    with a text: it rings the same way and its text is the notification's body. Right after a message is sent the
 //    database calls this function with {"ring": id} (migration 009): then only that message rings, at once.
+// Members using the Android app (migration 011) get the same notifications through dz_native_inbox instead of
+// Web Push: the app waits for them (dz-czekaj) and shows them itself, which Xiaomi phones do not block like Chrome.
+// Alarms are not put in the inbox, the app rings them itself. While the app keeps talking to the server
+// (last_seen_at within NATIVE_FRESH_MIN), Web Push to that member is skipped, so nothing comes twice; when the
+// phone puts the app to sleep, Web Push comes back as the fallback.
 import { createClient } from "npm:@supabase/supabase-js@2.45.4";
 import webpush from "npm:web-push@3.6.7";
 
@@ -35,6 +40,8 @@ function localNow(tz: string) {
 const NUDGE_AT = Array.from({ length: 12 }, (_, i) => `${String(15 + Math.floor(i / 2)).padStart(2, "0")}:${i % 2 ? "30" : "00"}`);
 // Persistent task reminders: repeat every 5 minutes for up to 2 hours; dz_config keys remind_every / remind_for override
 const REMIND_EVERY = 5, REMIND_FOR = 120;
+// Android app counts as alive when it called the server within this many minutes (its sync runs every 5 minutes)
+const NATIVE_FRESH_MIN = 30;
 const nextDay = (day: string) => { const d = new Date(day + "T12:00:00Z"); d.setUTCDate(d.getUTCDate() + 1); return d.toISOString().slice(0, 10); };
 
 // Repeating task limited to chosen weekdays (0 = Sunday): no reminders on the other days
@@ -68,17 +75,35 @@ Deno.serve(async (req) => {
   const { data: subs } = await supabase.from("dz_push_subs").select("*");
   const { data: alarms } = only ? await supabase.from("dz_alarms").select("*").eq("enabled", true).eq("id", only)
     : await supabase.from("dz_alarms").select("*").eq("enabled", true);
+  // Android app installations that show notifications themselves (migration 011). Before the migration the query
+  // fails: then nobody is native and everything goes by Web Push as before.
+  const { data: links } = await supabase.from("dz_alarm_links").select("member_id,family_id,last_seen_at").eq("notify", true);
+  const freshFrom = Date.now() - NATIVE_FRESH_MIN * 60_000;
+  const nativeOn = new Set((links ?? []).map((l) => l.member_id));
+  const nativeFresh = new Set((links ?? []).filter((l) => l.last_seen_at && Date.parse(l.last_seen_at) >= freshFrom).map((l) => l.member_id));
   const tzOf = new Map((families ?? []).map((f) => [f.id, f.tz]));
   const memberOf = new Map((members ?? []).map((m) => [m.id, m]));
 
+  // Web Push subscriptions of the matching members' devices, plus {native: member} for members with the Android app.
+  // Web Push is left out for a member whose Android app is alive, so a reminder does not come twice.
   const subsFor = (pred: (d: { member_id: string | null }) => boolean, familyId: string) => {
-    const users = new Set((devices ?? []).filter((d) => d.family_id === familyId && pred(d)).map((d) => d.user_id));
-    return (subs ?? []).filter((s) => users.has(s.user_id));
+    const devs = (devices ?? []).filter((d) => d.family_id === familyId && pred(d) && !nativeFresh.has(d.member_id));
+    const users = new Set(devs.map((d) => d.user_id));
+    const natives = [...new Set((members ?? []).filter((m) => m.family_id === familyId && nativeOn.has(m.id) && pred({ member_id: m.id })).map((m) => m.id))]
+      .map((id) => ({ native: id }));
+    return [...(subs ?? []).filter((s) => users.has(s.user_id)), ...natives];
   };
 
   let sent = 0, failed = 0;
   async function push(targets: any[], payload: Record<string, unknown>, ttl = 600) {
     for (const s of targets) {
+      if (s.native) {
+        // The Android app rings alarms itself; everything else goes to its inbox
+        if (payload.kind === "alarm") continue;
+        const { error } = await supabase.from("dz_native_inbox").insert({ member_id: s.native, payload });
+        if (error) { failed++; console.error("inbox failed", error.message); } else sent++;
+        continue;
+      }
       try {
         await webpush.sendNotification({ endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } }, JSON.stringify(payload), { TTL: ttl, urgency: "high" });
         sent++;
