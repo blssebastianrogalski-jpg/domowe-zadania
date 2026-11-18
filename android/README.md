@@ -35,6 +35,17 @@ Co jest w środku:
 Bez Firebase (FCM): nie trzeba zakładać projektu w Google ani trzymać klucza konta usługi. Kosztem jest stałe małe
 powiadomienie „Domowe Zadania czekają na przypomnienia” (usługa pierwszoplanowa) i trochę więcej baterii.
 
+## Aktualizacje
+
+- Zmiany strony (wygląd, zadania, przyciski) przychodzą same, bez nowego APK.
+- Nowa wersja APK: aplikacja sprawdza najnowsze wydanie na GitHubie (przy otwarciu, najczęściej co godzinę, i w tle
+  co 6 godzin) i pyta „Nowa wersja aplikacji. Zaktualizować?”. Po „Aktualizuj” sama pobiera `domowe-zadania.apk`
+  i oddaje je instalatorowi Androida (`Updater.java`, PackageInstaller). Android pokazuje swoje okno potwierdzenia:
+  jedno stuknięcie. Bez żadnego stuknięcia instalować może tylko Google Play albo telefon firmowy.
+- Za pierwszym razem Android prosi o zgodę „Instaluj nieznane aplikacje” dla tej aplikacji. Na telefonie dziecka
+  z Family Link może być to zablokowane: wtedy zgodę daje rodzic w Family Link albo aktualizuje rodzic.
+- Przycisk „⬆️ Aktualizuj” i „Sprawdź aktualizację” są też w „Ustawienia telefonu”.
+
 ## Budowanie
 
 GitHub Actions (`.github/workflows/android.yml`) buduje APK przy każdej zmianie w `android/`. Na `main` publikuje je
