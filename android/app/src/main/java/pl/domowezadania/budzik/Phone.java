@@ -60,6 +60,28 @@ final class Phone {
         return ch == null || ch.getImportance() != NotificationManager.IMPORTANCE_NONE;
     }
 
+    /** How loud the phone is right now, for the report to the server (Inbox.report): the things that silence a
+     *  notification without the app knowing. */
+    static org.json.JSONObject soundState(Context c) throws org.json.JSONException {
+        NotificationManager nm = c.getSystemService(NotificationManager.class);
+        android.media.AudioManager am = c.getSystemService(android.media.AudioManager.class);
+        NotificationChannel ch = nm.getNotificationChannel(Inbox.CHANNEL_TASKS);
+        int mode = am.getRingerMode();
+        int filter = nm.getCurrentInterruptionFilter();
+        org.json.JSONObject o = new org.json.JSONObject()
+                .put("enabled", nm.areNotificationsEnabled())
+                .put("ringer", mode == android.media.AudioManager.RINGER_MODE_SILENT ? "silent"
+                        : mode == android.media.AudioManager.RINGER_MODE_VIBRATE ? "vibrate" : "normal")
+                .put("dnd", filter > NotificationManager.INTERRUPTION_FILTER_ALL)
+                .put("vol_notif", am.getStreamVolume(android.media.AudioManager.STREAM_NOTIFICATION))
+                .put("vol_alarm", am.getStreamVolume(android.media.AudioManager.STREAM_ALARM))
+                .put("vol_alarm_max", am.getStreamMaxVolume(android.media.AudioManager.STREAM_ALARM))
+                .put("model", Build.MANUFACTURER + " " + Build.MODEL + " / Android " + Build.VERSION.RELEASE);
+        if (ch != null) o.put("channel_importance", ch.getImportance()).put("channel_sound", ch.getSound() != null);
+        try { o.put("battery_free", c.getSystemService(android.os.PowerManager.class).isIgnoringBatteryOptimizations(c.getPackageName())); } catch (Exception ignored) {}
+        return o;
+    }
+
     /** Opens the screen; if this phone does not have it, the app's system settings instead. True if the special one opened. */
     static boolean open(Context c, Intent i) {
         try { c.startActivity(i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)); return true; }

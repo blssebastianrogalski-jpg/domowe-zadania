@@ -53,6 +53,8 @@
             android:theme="@android:style/Theme.Material.NoActionBar.Fullscreen" />
 
         <service android:name=".RingService" android:exported="false" android:foregroundServiceType="mediaPlayback" />
+        <!-- A task reminder ignored for 15 minutes rings briefly with the alarm sound (ReminderRing) -->
+        <service android:name=".ReminderRing" android:exported="false" android:foregroundServiceType="mediaPlayback" />
 
         <!-- Keeps one long request open so a parent's message rings within seconds (WaitService) -->
         <service android:name=".WaitService" android:exported="false" android:foregroundServiceType="specialUse">

@@ -62,16 +62,36 @@ final class Inbox {
         try {
             JSONObject r = new JSONObject(body);
             JSONArray items = r.optJSONArray("items");
+            JSONArray shown = new JSONArray(), skipped = new JSONArray();
+            boolean loud = false;
             for (int i = 0; items != null && i < items.length(); i++) {
                 JSONObject it = items.optJSONObject(i);
                 if (it == null) continue;
                 long at = 0;
                 try { at = OffsetDateTime.parse(it.optString("at")).toInstant().toEpochMilli(); } catch (Exception ignored) {}
-                if (at > 0 && System.currentTimeMillis() - at > STALE_MS) continue;
+                if (at > 0 && System.currentTimeMillis() - at > STALE_MS) { skipped.put(it.optLong("id")); continue; }
                 JSONObject p = it.optJSONObject("p");
-                if (p != null) show(c, p);
+                if (p == null) continue;
+                show(c, p);
+                shown.put(it.optLong("id"));
+                // Several loud reminders at once ring once: the first one starts the sound
+                if (!loud && p.optBoolean("loud") && !"help".equals(p.optString("kind"))) {
+                    loud = ReminderRing.start(c, p.optString("title", "⏰ Przypomnienie"), p.optString("body"), p.optString("task"));
+                }
             }
             Alarms.prefs(c).edit().putLong("inbox_after", r.optLong("last", after)).putLong("inbox_seen", System.currentTimeMillis()).apply();
+            if (shown.length() > 0 || skipped.length() > 0) report(c, shown, skipped, loud);
+        } catch (Exception ignored) {}
+    }
+
+    /** Tells the server what the phone did with the notifications and how the phone is set (migration 013), so
+     *  "the phone stays silent" can be checked from the database instead of guessed. Before migration 013 the call
+     *  fails quietly. */
+    static void report(Context c, JSONArray shown, JSONArray skipped, boolean loud) {
+        try {
+            JSONObject info = Phone.soundState(c).put("loud_started", loud).put("skipped", skipped)
+                    .put("app", Updater.current(c));
+            Alarms.rpcRaw(c, "dz_native_inbox_seen", new JSONObject().put("p_ids", shown).put("p_info", info));
         } catch (Exception ignored) {}
     }
 
@@ -108,7 +128,11 @@ final class Inbox {
             b.addAction(new Notification.Action.Builder(null, "Za 15 min", open(c, "?task=" + task + "&a=snooze15#moje", id * 4 + 2)).build());
         }
         if ("nudge".equals(kind) && p.has("count")) b.setNumber(p.optInt("count"));
-        try { c.getSystemService(NotificationManager.class).notify(id, b.build()); } catch (Exception ignored) {}
+        NotificationManager nm = c.getSystemService(NotificationManager.class);
+        // A repeat of the same task replaces the old one in the shade. Removing it first makes it a new
+        // notification, so it rings and pops up again instead of being updated in place without a sound.
+        try { nm.cancel(id); } catch (Exception ignored) {}
+        try { nm.notify(id, b.build()); } catch (Exception ignored) {}
     }
 
     static int callNotifId(String call) { return 3000 + (call.hashCode() & 0xffff); }

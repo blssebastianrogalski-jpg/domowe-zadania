@@ -41,8 +41,10 @@ function localNow(tz: string) {
 // Times (family local) of the summary nudge: every 30 minutes from 15:00 to 20:30;
 // dz_config key nudge_times overrides, e.g. "16:00,18:00,19:30"
 const NUDGE_AT = Array.from({ length: 12 }, (_, i) => `${String(15 + Math.floor(i / 2)).padStart(2, "0")}:${i % 2 ? "30" : "00"}`);
-// Persistent task reminders: repeat every 5 minutes for up to 2 hours; dz_config keys remind_every / remind_for override
-const REMIND_EVERY = 5, REMIND_FOR = 120;
+// Persistent task reminders: repeat every 5 minutes for up to 2 hours; dz_config keys remind_every / remind_for override.
+// From the REMIND_LOUD-th repeat on (15 minutes ignored) the payload says loud: the Android app then rings briefly
+// with the alarm sound, which plays also on a silent phone (ReminderRing.java); dz_config remind_loud, 0 = never.
+const REMIND_EVERY = 5, REMIND_FOR = 120, REMIND_LOUD = 3;
 // Android app counts as alive when it called the server within this many minutes (its sync runs every 5 minutes)
 const NATIVE_FRESH_MIN = 30;
 const nextDay = (day: string) => { const d = new Date(day + "T12:00:00Z"); d.setUTCDate(d.getUTCDate() + 1); return d.toISOString().slice(0, 10); };
@@ -151,6 +153,8 @@ Deno.serve(async (req) => {
   }
   const nudgeAt = conf.nudge_times ? conf.nudge_times.split(",").map((x) => x.trim()) : NUDGE_AT;
   const every = Math.max(1, Number(conf.remind_every) || REMIND_EVERY), keepFor = Math.max(0, Number(conf.remind_for) || REMIND_FOR);
+  const loudFrom = conf.remind_loud !== undefined && conf.remind_loud !== "" ? Math.max(0, Number(conf.remind_loud) || 0) : REMIND_LOUD;
+  const loud = (n: number) => loudFrom > 0 && n >= loudFrom;
   const toMin = (t: string) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5));
   // n-th repeat if `since` minutes after the first reminder is a repeat minute, else 0. Not in a nudge minute: the
   // summary already rings then, two sounds at once help nobody.
@@ -170,7 +174,7 @@ Deno.serve(async (req) => {
     } else if (st === "snoozed" && t.snooze_until && t.snooze_notified_at && Date.parse(t.snooze_notified_at) >= Date.parse(t.snooze_until)) {
       // The snooze came back and the child did nothing yet: keep reminding until done or snoozed again
       const n = repeatNo(Math.floor((now - Date.parse(t.snooze_until)) / 60000), hm);
-      if (n) await push(forMember(), { title: "⏰ Nadal czeka: " + t.title, body: dueText(t) + "Zrób teraz albo odłóż jeszcze raz, bez kary.", task: t.id, kind: "snooze", repeat: n });
+      if (n) await push(forMember(), { title: "⏰ Nadal czeka: " + t.title, body: dueText(t) + "Zrób teraz albo odłóż jeszcze raz, bez kary.", task: t.id, kind: "snooze", repeat: n, loud: loud(n) });
     }
 
     if (t.remind_at && st === "todo" && !offDay(t, dow) && t.remind_notified_day !== day && t.remind_at.slice(0, 5) <= hm &&
@@ -180,7 +184,7 @@ Deno.serve(async (req) => {
     } else if (t.remind_at && st === "todo" && !offDay(t, dow) && t.remind_notified_day === day) {
       // First reminder went out today and the task is still waiting: repeat it every few minutes
       const n = repeatNo(toMin(hm) - toMin(t.remind_at), hm);
-      if (n) await push(forMember(), { title: "⏰ Nadal czeka: " + t.title, body: dueText(t) + "Zrób teraz albo odłóż na później, bez kary.", task: t.id, kind: "remind", repeat: n });
+      if (n) await push(forMember(), { title: "⏰ Nadal czeka: " + t.title, body: dueText(t) + "Zrób teraz albo odłóż na później, bez kary.", task: t.id, kind: "remind", repeat: n, loud: loud(n) });
     }
 
     if (st === "help" && !t.help_notified_at) {
