@@ -1,5 +1,5 @@
 // Service worker: app-shell cache + push notifications
-const CACHE = "dz-v18";
+const CACHE = "dz-v19";
 const SHELL = ["./", "index.html", "styles.css", "app.js", "config.js", "manifest.webmanifest", "icons/icon-192.png",
   "themes/cieply.css", "themes/nocny.css", "themes/klocki.css", "themes/piksele.css", "themes/plac.css", "themes/kotek.css", "themes/ninja.css"];
 
@@ -39,12 +39,23 @@ async function showTaskReminder(d) {
   for (const n of await self.registration.getNotifications()) if (n.data?.task === d.task && n.data?.kind !== "alarm" && n.tag !== tag) n.close();
 }
 
+// A parent calls the child ("📣 Tata cię woła", migration 012): loud, stays on screen, two answer buttons.
+// Closing it without an answer is fine too: the child may already be on the way.
+async function showCall(d) {
+  await self.registration.showNotification(d.title || "📣 Wołanie", {
+    body: d.body || "", icon: "icons/icon-192.png", badge: "icons/badge-96.png", tag: d.task || "call", renotify: true,
+    data: { task: d.task, kind: "call", call: d.call }, requireInteraction: true, silent: false, vibrate: [500, 200, 500, 200, 500],
+    actions: [{ action: "coming", title: "🏃 Idę!" }, { action: "soon", title: "⏳ Za 5 minut" }],
+  });
+}
+
 self.addEventListener("push", (e) => {
   let d = {};
   try { d = e.data ? e.data.json() : {}; } catch { d = { title: "Domowe Zadania", body: e.data && e.data.text() }; }
   // An alarm has no buttons on purpose: it can only be turned off in the app, by solving the challenge
   if (d.kind === "alarm") { e.waitUntil(showAlarm(d)); return; }
   if ((d.kind === "remind" || d.kind === "snooze") && d.task) { e.waitUntil(showTaskReminder(d)); return; }
+  if (d.kind === "call" && d.call) { e.waitUntil(showCall(d)); return; }
   const actions = d.kind === "help" || d.kind === "nudge" ? [] : [{ action: "done", title: "Zrobione" }, { action: "snooze15", title: "Za 15 min" }];
   if (d.kind === "nudge" && typeof d.count === "number") self.navigator.setAppBadge?.(d.count).catch(() => {});
   e.waitUntil(self.registration.showNotification(d.title || "Domowe Zadania", {
@@ -72,10 +83,12 @@ self.addEventListener("message", (e) => {
 
 self.addEventListener("notificationclick", (e) => {
   e.notification.close();
-  const { task, kind } = e.notification.data || {};
+  const { task, kind, call } = e.notification.data || {};
   if (task === "remind-test") return;
   const params = new URLSearchParams();
-  if (task && e.action && kind !== "alarm") { params.set("task", task); params.set("a", e.action); }
+  // A call's answer button: the app opens and sends the answer (the worker has no login of its own)
+  if (kind === "call" && call) { params.set("call", call); if (e.action) params.set("a", e.action); }
+  else if (task && e.action && kind !== "alarm") { params.set("task", task); params.set("a", e.action); }
   const url = new URL("./" + (params.toString() ? "?" + params : "") + (kind === "help" ? "#rodzic" : "#moje"), self.registration.scope).href;
   e.waitUntil((async () => {
     const wins = await self.clients.matchAll({ type: "window", includeUncontrolled: true });

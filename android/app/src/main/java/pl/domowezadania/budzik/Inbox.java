@@ -21,7 +21,7 @@ import java.time.OffsetDateTime;
  * A reminder of the same task replaces the previous one, like in the web app.
  */
 final class Inbox {
-    static final String CHANNEL_TASKS = "zadania", CHANNEL_PARENT = "rodzic";
+    static final String CHANNEL_TASKS = "zadania", CHANNEL_PARENT = "rodzic", CHANNEL_CALL = "wolanie";
     /** Older than this when it finally arrives (the phone slept): skipped, a stale reminder only confuses. */
     private static final long STALE_MS = 15 * 60_000;
     private static final long[] VIBRATE = {0, 600, 250, 600, 250, 900};
@@ -41,8 +41,14 @@ final class Inbox {
         p.setDescription("Dziecko prosi o pomoc, zrobiło zadanie albo nie wyłączyło budzika");
         p.setSound(RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION), aa);
         p.setLockscreenVisibility(Notification.VISIBILITY_PUBLIC);
+        NotificationChannel w = new NotificationChannel(CHANNEL_CALL, "Rodzic woła", NotificationManager.IMPORTANCE_HIGH);
+        w.setDescription("Rodzic woła dziecko (np. „Tata cię woła”), z przyciskami Idę! i Za 5 minut");
+        w.enableVibration(true); w.setVibrationPattern(new long[]{0, 500, 200, 500, 200, 500});
+        w.setSound(RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION), aa);
+        w.setLockscreenVisibility(Notification.VISIBILITY_PUBLIC);
         nm.createNotificationChannel(t);
         nm.createNotificationChannel(p);
+        nm.createNotificationChannel(w);
     }
 
     /** Fetches and shows new notifications (blocking, call off the main thread). */
@@ -79,6 +85,7 @@ final class Inbox {
     static void show(Context c, JSONObject p) {
         channels(c);
         String kind = p.optString("kind"), task = p.optString("task", "x");
+        if ("call".equals(kind) && !p.optString("call").isEmpty()) { showCall(c, p); return; }
         boolean parent = "help".equals(kind);
         int id = 1000 + (task.hashCode() & 0xffff);
         Notification.Builder b = new Notification.Builder(c, parent ? CHANNEL_PARENT : CHANNEL_TASKS)
@@ -101,6 +108,29 @@ final class Inbox {
             b.addAction(new Notification.Action.Builder(null, "Za 15 min", open(c, "?task=" + task + "&a=snooze15#moje", id * 4 + 2)).build());
         }
         if ("nudge".equals(kind) && p.has("count")) b.setNumber(p.optInt("count"));
+        try { c.getSystemService(NotificationManager.class).notify(id, b.build()); } catch (Exception ignored) {}
+    }
+
+    static int callNotifId(String call) { return 3000 + (call.hashCode() & 0xffff); }
+
+    /** A parent calls ("📣 Tata cię woła", migration 012): answer buttons work without opening the app (CallReceiver);
+     *  swiping it away tells the parent the child saw it, a tap opens the app. */
+    static void showCall(Context c, JSONObject p) {
+        String call = p.optString("call");
+        int id = callNotifId(call);
+        Notification.Builder b = new Notification.Builder(c, CHANNEL_CALL)
+                .setSmallIcon(R.drawable.ic_stat)
+                .setContentTitle(p.optString("title", "📣 Rodzic cię woła"))
+                .setContentText(p.optString("body"))
+                .setStyle(new Notification.BigTextStyle().bigText(p.optString("body")))
+                .setCategory(Notification.CATEGORY_MESSAGE)
+                .setVisibility(Notification.VISIBILITY_PUBLIC)
+                .setAutoCancel(true)
+                .setShowWhen(true)
+                .setContentIntent(open(c, "#moje", id))
+                .setDeleteIntent(CallReceiver.intent(c, call, "seen", id * 4 + 3))
+                .addAction(new Notification.Action.Builder(null, "🏃 Idę!", CallReceiver.intent(c, call, "coming", id * 4 + 1)).build())
+                .addAction(new Notification.Action.Builder(null, "⏳ Za 5 minut", CallReceiver.intent(c, call, "soon", id * 4 + 2)).build());
         try { c.getSystemService(NotificationManager.class).notify(id, b.build()); } catch (Exception ignored) {}
     }
 }

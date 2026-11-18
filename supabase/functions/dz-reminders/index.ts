@@ -9,6 +9,9 @@
 //    once to parents if it is still ringing after 15 minutes. A parent's message (komunikat) is a one-day alarm
 //    with a text: it rings the same way and its text is the notification's body. Right after a message is sent the
 //    database calls this function with {"ring": id} (migration 009): then only that message rings, at once.
+//  - a parent's call (zawołaj dziecko, migration 012): the database calls this function with {"call": id} right after
+//    the parent taps the tile, and again when the child answers ("Idę!" / "Za 5 minut"): then only that call is
+//    handled. The child gets "📣 Tata cię woła", the parent who called gets the answer.
 // Members using the Android app (migration 011) get the same notifications through dz_native_inbox instead of
 // Web Push: the app waits for them (dz-czekaj) and shows them itself, which Xiaomi phones do not block like Chrome.
 // Alarms are not put in the inbox, the app rings them itself. While the app keeps talking to the server
@@ -65,15 +68,19 @@ Deno.serve(async (req) => {
   conf.vapid_subject ??= "https://blssebastianrogalski-jpg.github.io/domowe-zadania/";
   webpush.setVapidDetails(conf.vapid_subject, conf.vapid_public, conf.vapid_private);
   // {"ring": id}: only this alarm, nothing else (tasks and nudges stay with the minute cron)
-  let only: string | null = null;
-  try { const b = await req.json(); if (typeof b?.ring === "string") only = b.ring; } catch { /* cron sends {} */ }
+  let only: string | null = null, callId: string | null = null;
+  try {
+    const b = await req.json();
+    if (typeof b?.ring === "string") only = b.ring;
+    if (typeof b?.call === "string") callId = b.call;
+  } catch { /* cron sends {} */ }
 
   const { data: families } = await supabase.from("dz_families").select("id,tz");
-  const { data: tasks } = only ? { data: [] } : await supabase.from("dz_tasks").select("*");
+  const { data: tasks } = only || callId ? { data: [] } : await supabase.from("dz_tasks").select("*");
   const { data: devices } = await supabase.from("dz_devices").select("user_id,family_id,member_id");
-  const { data: members } = await supabase.from("dz_members").select("id,name,role,family_id");
+  const { data: members } = await supabase.from("dz_members").select("*");
   const { data: subs } = await supabase.from("dz_push_subs").select("*");
-  const { data: alarms } = only ? await supabase.from("dz_alarms").select("*").eq("enabled", true).eq("id", only)
+  const { data: alarms } = callId ? { data: [] } : only ? await supabase.from("dz_alarms").select("*").eq("enabled", true).eq("id", only)
     : await supabase.from("dz_alarms").select("*").eq("enabled", true);
   // Android app installations that show notifications themselves (migration 011). Before the migration the query
   // fails: then nobody is native and everything goes by Web Push as before.
@@ -114,6 +121,33 @@ Deno.serve(async (req) => {
         if (e?.statusCode === 404 || e?.statusCode === 410) await supabase.from("dz_push_subs").delete().eq("endpoint", s.endpoint);
       }
     }
+  }
+  // A parent's call (migration 012): new -> to the child; answered -> to the parent who called. Nothing else.
+  if (callId) {
+    const { data: c } = await supabase.from("dz_calls").select("*").eq("id", callId).maybeSingle();
+    const from = c?.from_member ? memberOf.get(c.from_member) : null;
+    const to = c ? memberOf.get(c.to_member) : null;
+    // Too old: a call that waited (the function was down) is not worth ringing any more
+    const fresh = c && Date.now() - Date.parse(c.created_at) < 10 * 60_000;
+    if (c && to && fresh && !c.answer) {
+      const label = (from as any)?.call_as || from?.name || "Rodzic";
+      await push(subsFor((d) => d.member_id === c.to_member, c.family_id), {
+        title: "📣 " + label + " cię woła", body: c.note || "Przyjdź, proszę.",
+        task: "call-" + c.id, call: c.id, kind: "call", from: label,
+      }, 300);
+    } else if (c && to && (c.answer === "coming" || c.answer === "soon") && !c.answer_notified_at && c.from_member) {
+      // Claim it first, so two quick runs do not both tell the parent
+      const { data: claimed } = await supabase.from("dz_calls").update({ answer_notified_at: new Date().toISOString() })
+        .eq("id", c.id).is("answer_notified_at", null).select("id");
+      if (!claimed?.length) return new Response(JSON.stringify({ ok: true, sent, failed }), { headers: { "content-type": "application/json" } });
+      const time = new Intl.DateTimeFormat("pl-PL", { timeZone: tzOf.get(c.family_id) ?? "Europe/Warsaw", hour: "2-digit", minute: "2-digit" }).format(new Date(c.created_at));
+      await push(subsFor((d) => d.member_id === c.from_member, c.family_id), {
+        title: c.answer === "coming" ? "🏃 " + to.name + ": Idę!" : "⏳ " + to.name + ": Za 5 minut",
+        body: "Odpowiedź na wołanie z " + time + (c.note ? " („" + c.note + "”)" : "") + ".",
+        task: "call-" + c.id, kind: "help",
+      }, 600);
+    }
+    return new Response(JSON.stringify({ ok: true, sent, failed }), { headers: { "content-type": "application/json" } });
   }
   const nudgeAt = conf.nudge_times ? conf.nudge_times.split(",").map((x) => x.trim()) : NUDGE_AT;
   const every = Math.max(1, Number(conf.remind_every) || REMIND_EVERY), keepFor = Math.max(0, Number(conf.remind_for) || REMIND_FOR);
