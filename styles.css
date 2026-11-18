@@ -197,3 +197,12 @@ html.ringing,html.ringing body{overflow:hidden}
 .sect-top > summary{font-size:1.2rem}
 .sect > .sect-body{display:flex;flex-direction:column;gap:12px;margin-top:10px}
 .sect .sect-count{font-family:var(--f-body);font-weight:500;font-size:.85rem;color:var(--muted);font-variant-numeric:tabular-nums}
+
+/* Zawołaj dziecko: big one-tap buttons for the parent, an answer card for the child */
+.call-btns{display:flex;flex-wrap:wrap;gap:8px}
+.call-btns button{flex:1 1 120px;min-height:56px;font-size:1.05rem}
+.call-more summary{cursor:pointer}
+.call-opts{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:8px}
+@media (max-width:520px){.call-opts{grid-template-columns:1fr}}
+.call-ask{border-color:var(--accent);background:var(--accent-soft)}
+.call-ask .inline button{flex:1 1 110px}

@@ -65,6 +65,7 @@ try { const k = localStorage.getItem("dz-skin"); if (k && k !== "morski") { docu
   <!-- EXECUTOR -->
   <section id="view-moje" hidden>
     <div id="notif-hint" class="note" hidden></div>
+    <div id="my-calls"></div>
     <div id="focus-wrap"></div>
     <div id="my-sections" class="sects"></div>
     <div class="panel" id="week-panel" hidden>
@@ -87,6 +88,18 @@ try { const k = localStorage.getItem("dz-skin"); if (k && k !== "morski") { docu
 
   <!-- PARENT -->
   <section id="view-rodzic" hidden>
+    <div class="panel call-tile" id="call-panel">
+      <h2>📣 Zawołaj dziecko</h2>
+      <div class="call-btns" id="call-btns"></div>
+      <details class="call-more">
+        <summary class="muted small">Dopisek i podpis</summary>
+        <div class="call-opts">
+          <label>Dopisek (opcjonalnie)<input id="call-note" maxlength="120" placeholder="np. obiad, pomóż z zakupami"></label>
+          <label>Dzieci zobaczą, że woła<input id="call-as" maxlength="30" placeholder="np. Tata"></label>
+        </div>
+      </details>
+      <ul id="calls" class="rows"></ul>
+    </div>
     <div class="panel" id="help-panel" hidden>
       <h2>Prośby o pomoc</h2>
       <ul id="help" class="rows"></ul>

@@ -3,7 +3,7 @@ import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 const CFG = window.DZ_CONFIG;
 const sb = createClient(CFG.supabaseUrl, CFG.supabaseAnonKey, { auth: { persistSession: true, autoRefreshToken: true } });
 const $ = (id) => document.getElementById(id);
-const S = { uid: null, device: null, family: null, members: [], tasks: [], tally: {}, alarms: [], me: null, isParent: false, school: null };
+const S = { uid: null, device: null, family: null, members: [], tasks: [], tally: {}, alarms: [], calls: [], me: null, isParent: false, school: null };
 
 // ---------- small helpers ----------
 const pad = (n) => String(n).padStart(2, "0");
@@ -65,13 +65,17 @@ async function loadAll() {
   if (!dev) { S.family = null; return; }
   const fid = dev.family_id;
   const since = new Date(); since.setDate(since.getDate() - 7);
-  const [fam, mem, tasks, tally, alarms] = await Promise.all([
+  const callsFrom = new Date(Date.now() - 24 * 3600e3).toISOString();
+  const [fam, mem, tasks, tally, alarms, calls] = await Promise.all([
     sb.from("dz_families").select("*").eq("id", fid).single(),
     sb.from("dz_members").select("*").eq("family_id", fid).order("created_at"),
     sb.from("dz_tasks").select("*").eq("family_id", fid),
     sb.from("dz_tally").select("*").eq("family_id", fid).gte("day", dayOf(since)),
     sb.from("dz_alarms").select("*").eq("family_id", fid).order("at"),
+    sb.from("dz_calls").select("*").eq("family_id", fid).gte("created_at", callsFrom).order("created_at", { ascending: false }),
   ]);
+  // Before migration 012 the table is missing: no calls, everything else works
+  S.calls = calls.data || [];
   // Before the 004 migration runs the table is missing: the app keeps working without alarms
   S.alarms = alarms.data || [];
   S.family = fam.data; S.members = mem.data || []; S.tasks = tasks.data || [];
@@ -86,7 +90,7 @@ function subscribe() {
   const fid = S.device.family_id;
   const reload = debounce(async () => { await loadAll(); render(); }, 300);
   channel = sb.channel("family-" + fid);
-  for (const table of ["dz_tasks", "dz_tally", "dz_members", "dz_alarms"]) channel.on("postgres_changes", { event: "*", schema: "public", table, filter: "family_id=eq." + fid }, reload);
+  for (const table of ["dz_tasks", "dz_tally", "dz_members", "dz_alarms", "dz_calls"]) channel.on("postgres_changes", { event: "*", schema: "public", table, filter: "family_id=eq." + fid }, reload);
   channel.subscribe();
   document.addEventListener("visibilitychange", () => { if (!document.hidden) reload(); });
   setInterval(() => { if (!document.hidden) reload(); }, 60000);
@@ -201,6 +205,7 @@ function renderMoje() {
     if (!hint.hidden) { hint.replaceChildren("Przypomnienia na zablokowanym telefonie są wyłączone. ", el("a", { href: "#ustawienia" }, "Włącz w ustawieniach")); }
   }
 
+  renderMyCalls();
   const fw = $("focus-wrap"); fw.replaceChildren();
   if (!active.length) fw.append(el("div", { class: "panel" }, el("h2", {}, later.length ? "Na teraz nic. Odłożone zadania wrócą same." : "Na dziś wszystko zrobione."), el("p", { class: "muted" }, later.length ? "Zobacz listę „Odłożone” poniżej." : "Dobra robota.")));
   else fw.append(focusCard(active[0], active.length - 1));
@@ -371,6 +376,7 @@ function renderWeek() {
 
 // ---------- parent ----------
 function renderRodzic() {
+  renderCalls();
   const helps = S.tasks.filter((t) => st(t) === "help");
   $("help-panel").hidden = !helps.length;
   const hp = $("help"); hp.replaceChildren();
@@ -419,6 +425,64 @@ function renderRodzic() {
   if (keep) sel.value = keep; else { const firstChild = S.members.find((m) => m.role === "child"); if (firstChild) sel.value = firstChild.id; }
   renderAlarms();
   renderSchool();
+}
+
+// ---------- zawołaj dziecko (migration 012): one tap, the child gets "📣 Tata cię woła" and answers ----------
+const ANSWER = { coming: "🏃 Idę!", soon: "⏳ Za 5 minut", seen: "👀 odczytane" };
+const callLabel = (m) => (m && (m.call_as || m.name)) || "Rodzic";
+const ago = (iso) => { const min = Math.round((Date.now() - Date.parse(iso)) / 60000); return min < 1 ? "przed chwilą" : min < 60 ? min + " min temu" : hm(Date.parse(iso)); };
+function renderCalls() {
+  const kids = S.members.filter((m) => m.role === "child");
+  $("call-panel").hidden = !kids.length;
+  const btns = $("call-btns"); btns.replaceChildren();
+  for (const m of kids) btns.append(el("button", { class: "primary", type: "button", onclick: () => callKids([m.id]) }, m.name));
+  if (kids.length >= 2) btns.append(el("button", { class: "primary", type: "button", onclick: () => callKids(kids.map((m) => m.id)) }, kids.length === 2 ? "Oboje" : "Wszystkie dzieci"));
+  if (document.activeElement !== $("call-as")) $("call-as").value = S.me?.call_as || "";
+  $("call-as").placeholder = "np. Tata (teraz: " + (S.me?.name || "") + ")";
+  // Today's calls of this parent, newest first
+  const mine = S.calls.filter((c) => c.from_member === S.me.id && Date.now() - Date.parse(c.created_at) < 12 * 3600e3).slice(0, 8);
+  const ul = $("calls"); ul.replaceChildren();
+  for (const c of mine) ul.append(el("li", { class: "row" },
+    el("div", { class: "t" }, el("strong", {}, memberName(c.to_member)), el("span", { class: "meta" }, "  · " + ago(c.created_at) + (c.note ? " · " + c.note : ""))),
+    el("span", { class: "pill " + (c.answer === "coming" || c.answer === "seen" ? "s-done" : c.answer === "soon" ? "s-doing" : "s-todo") }, c.answer ? ANSWER[c.answer] : "czeka na odpowiedź")));
+}
+async function callKids(ids) {
+  for (const b of $("call-btns").querySelectorAll("button")) b.disabled = true;
+  const { data, error } = await sb.rpc("dz_call", { p_members: ids, p_note: $("call-note").value.trim() || null });
+  for (const b of $("call-btns").querySelectorAll("button")) b.disabled = false;
+  if (error) { toast(/dz_call/.test(errMsg(error)) ? "Wołanie nie jest jeszcze włączone na serwerze." : errMsg(error)); return; }
+  $("call-note").value = "";
+  toast(data ? "📣 Zawołano: " + namesList(ids) + ". Odpowiedź zobaczysz tutaj." : "Już wołasz, poczekaj chwilę.");
+  await loadAll(); render();
+}
+$("call-as").addEventListener("change", async () => {
+  const v = $("call-as").value.trim() || null;
+  const { error } = await sb.from("dz_members").update({ call_as: v }).eq("id", S.me.id);
+  if (error) { toast(errMsg(error)); return; }
+  S.me.call_as = v;
+  toast("Dzieci zobaczą: „📣 " + callLabel(S.me) + " cię woła”.");
+});
+// The child's side: an open call from the last 15 minutes waits at the top with the same answers as the notification
+function renderMyCalls() {
+  const box = $("my-calls"); box.replaceChildren();
+  const open = S.calls.filter((c) => c.to_member === S.me.id && !c.answer && Date.now() - Date.parse(c.created_at) < 15 * 60000);
+  for (const c of open) {
+    const from = callLabel(S.members.find((m) => m.id === c.from_member));
+    box.append(el("div", { class: "panel call-ask", role: "alert" },
+      el("h2", {}, "📣 " + from + " cię woła"),
+      el("p", {}, c.note || "Przyjdź, proszę."),
+      el("div", { class: "inline" },
+        el("button", { class: "primary", onclick: () => answerCall(c.id, "coming") }, "🏃 Idę!"),
+        el("button", { onclick: () => answerCall(c.id, "soon") }, "⏳ Za 5 minut"),
+        el("button", { class: "ghost", onclick: () => answerCall(c.id, "seen") }, "OK"))));
+  }
+}
+async function answerCall(id, a) {
+  const { error } = await sb.rpc("dz_call_answer", { p_call: id, p_answer: a });
+  if (error) { toast(errMsg(error)); return; }
+  const c = S.calls.find((x) => x.id === id); if (c) c.answer = a;
+  if (a !== "seen") toast("Wysłano: " + ANSWER[a]);
+  render();
 }
 
 // ---------- alarms (budzik): the parent sets them, the child only turns one off by solving a challenge ----------
@@ -1059,7 +1123,9 @@ $("notif-test").onclick = async () => {
 async function handleUrlAction() {
   const p = new URLSearchParams(location.search);
   const code = p.get("kod"); if (code && !S.device) $("join-code").value = code;
-  const id = p.get("task"), a = p.get("a");
+  const id = p.get("task"), a = p.get("a"), call = p.get("call");
+  // A call's notification: a button sends that answer at once, a tap on the notification just opens the app
+  if (call && S.device && ["coming", "soon"].includes(a)) await answerCall(call, a);
   if (id && a && S.device) {
     const t = S.tasks.find((x) => x.id === id);
     if (t) {
@@ -1068,7 +1134,7 @@ async function handleUrlAction() {
       if (snoozeMin) { const ms = Date.now() + snoozeMin * 60000; if (await act(t, "snoozed", ms)) toast("OK, wrócę do Ciebie o " + hm(ms) + "."); }
     }
   }
-  if (id || code) history.replaceState(null, "", location.pathname + location.hash);
+  if (id || code || call) history.replaceState(null, "", location.pathname + location.hash);
 }
 navigator.serviceWorker?.addEventListener("message", async (e) => { if (e.data?.type === "open") { history.replaceState(null, "", e.data.url); await loadAll(); await handleUrlAction(); render(); } });
 

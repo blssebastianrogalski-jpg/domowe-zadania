@@ -61,6 +61,8 @@
         </service>
 
         <receiver android:name=".AlarmReceiver" android:exported="false" />
+        <!-- The child's answer to a parent's call, straight from the notification (CallReceiver) -->
+        <receiver android:name=".CallReceiver" android:exported="false" />
         <receiver android:name=".Updater$UpdateReceiver" android:exported="false" />
 
         <receiver android:name=".BootReceiver" android:exported="true">
