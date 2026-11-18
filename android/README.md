@@ -1,45 +1,58 @@
-# Budzik DZ (Android)
+# Domowe Zadania na Androida (dawniej Budzik DZ)
 
-Mała aplikacja Android z prawdziwym budzikiem dla Domowych Zadań. Aplikacja webowa (PWA) na zablokowanym
-telefonie może tylko pokazać powiadomienie; ta aplikacja dzwoni jak budzik w Zegarze:
+Natywna aplikacja Android dla całej rodziny, do instalacji z pliku APK (bez sklepu). Powstała, bo na telefonach Xiaomi
+(MIUI / HyperOS, także Redmi i POCO) wersja w Chrome jest usypiana i przypomnienia z Web Push nie dochodzą jak należy.
 
-- dźwięk budzika w pętli na kanale alarmu, więc gra także przy wyciszonym telefonie i w trybie Nie przeszkadzać
-  (jeśli tryb dopuszcza alarmy, tak jest domyślnie); głośność alarmu idzie na maksimum na czas dzwonienia,
-- budzik na cały ekran nad ekranem blokady, wibracje,
-- dźwięk do wyboru w aplikacji: dźwięk telefonu albo własna piosenka (domyślnie dźwięk alarmu telefonu),
-- wyłącza się dopiero, gdy dziecko rozwiąże zadania: na ekranie budzika (także na zablokowanym telefonie, bez Chrome,
-  funkcje `dz_alarm_challenge_link` / `dz_alarm_answer_link` z migracji `010_dz_budzik_bez_chrome.sql`) albo w aplikacji
-  Domowe Zadania; gdy rodzic wyłączy budzik, albo po 60 minutach. Działa też, gdy Family Link wstrzymał Chrome:
-  w Family Link wystarczy ustawić Budzik DZ jako „Zawsze dozwolona”.
+Co jest w środku:
 
-## Jak działa
+- **Cała aplikacja webowa w WebView** (`MainActivity`): ta sama strona z GitHub Pages, więc wszystkie funkcje i wygląd
+  są takie same i każda zmiana strony od razu jest w aplikacji, bez nowego APK. WebView to nie Chrome, więc limity
+  Family Link na Chrome i usypianie Chrome przez Xiaomi jej nie dotyczą.
+- **Natywne powiadomienia bez Chrome i bez Web Push** (`Inbox`, `WaitService`): przypomnienia o zadaniach (z przyciskami
+  „Zrobione” i „Za 15 min”), podsumowania na dziś, a rodzicowi „prosi o pomoc”, „zrobione” i „nie wyłączył budzika”.
+  Działa dla dziecka i dla rodzica.
+- **Prawdziwy budzik** jak dotąd (`RingService`, `RingActivity`): kanał alarmu, pełny ekran nad ekranem blokady,
+  zadania do wyłączenia na ekranie budzika, komunikaty od rodzica.
+- **Ekran „Ustawienia telefonu”** (`SetupActivity`): co Android pozwala (powiadomienia, pełny ekran, dokładne alarmy,
+  optymalizacja baterii, każde z przyciskiem do właściwego miejsca) i kroki Xiaomi: Autostart, oszczędzanie baterii
+  „Bez ograniczeń”, „Wyświetlaj na ekranie blokady” i wyskakujące okna w tle, kanały powiadomień, kłódka w ostatnich
+  aplikacjach. Xiaomi nie udostępnia stanu tych przełączników, więc każdy krok odhacza się ręcznie. Do tego „Próba z
+  serwera” (całą drogą jak prawdziwe przypomnienie) i próbny budzik.
 
-- Budziki ustawia rodzic jak dotąd w aplikacji webowej. Aplikacja Android pobiera budziki dziecka funkcją
-  `dz_alarm_feed` (migracja `supabase/migrations/007_dz_android_budzik.sql`) z tajnym kluczem urządzenia:
-  co 5 minut oraz po każdym dzwonku, restarcie i zmianie czasu. Następny budzik ustawia w systemie (`setAlarmClock`).
-- Klucz tworzy aplikacja webowa dziecka przyciskiem „📲 Budzik na Androida” (`dz_alarm_link`), który otwiera tę
-  aplikację linkiem `dzbudzik://link?s=…`. Gdy aplikacji nie ma, Chrome pobiera APK z najnowszego wydania.
-- Komunikat od rodzica (migracja `008_dz_komunikat.sql`) to jednorazowy budzik z tekstem: gdy aplikacja zobaczy go przy
-  pobieraniu, dzwoni od razu i pokazuje treść wiadomości na ekranie budzika.
-- Żeby komunikat zadzwonił w kilka sekund, `WaitService` (cicha usługa z małym stałym powiadomieniem „Budzik DZ czeka na
-  komunikaty”) trzyma otwarte długie zapytanie do funkcji `dz-czekaj`, która odpowiada, gdy tylko zmienią się budziki
-  dziecka. Wtedy aplikacja pobiera budziki i od razu dzwoni. Wymaga wyłączonego oszczędzania baterii dla aplikacji.
-- Tuż przed dzwonkiem aplikacja pyta serwer, czy budzik nadal jest aktualny. Bez internetu dzwoni według ostatnio
-  pobranych danych.
+## Jak działają powiadomienia
+
+1. Aplikacja webowa w WebView sama łączy telefon z osobą, która go używa (`window.DZAndroid`, funkcja `dz_alarm_link`),
+   także po zmianie osoby. Dawny przycisk w Chrome (`dzbudzik://link?s=…`) też działa.
+2. `dz-reminders` (co minutę) dla osoby z aplikacją wkłada powiadomienie do skrzynki `dz_native_inbox`
+   (migracja `supabase/migrations/011_dz_android_powiadomienia.sql`). Budzików nie wkłada, aplikacja dzwoni nimi sama.
+3. `WaitService` trzyma otwarte długie zapytanie do `dz-czekaj`, które odpowiada, gdy w skrzynce pojawi się coś nowego
+   albo zmienią się budziki. Aplikacja pobiera wtedy skrzynkę (`dz_native_inbox_read`) i pokazuje powiadomienia,
+   zwykle w kilka sekund. Zapas: sprawdzanie co 5 minut (`AlarmManager`), po restarcie i aktualizacji.
+4. Dopóki aplikacja odzywa się do serwera (ostatnie 30 minut), `dz-reminders` nie wysyła tej osobie Web Push, żeby nic
+   nie przychodziło podwójnie. Gdy telefon uśpi aplikację na dłużej, Web Push (jeśli był włączony w Chrome) wraca sam.
+5. Powiadomienie, które dotarło z opóźnieniem ponad 15 minut (telefon spał), jest pomijane.
+
+Bez Firebase (FCM): nie trzeba zakładać projektu w Google ani trzymać klucza konta usługi. Kosztem jest stałe małe
+powiadomienie „Domowe Zadania czekają na przypomnienia” (usługa pierwszoplanowa) i trochę więcej baterii.
 
 ## Budowanie
 
-GitHub Actions (`.github/workflows/android.yml`) buduje APK przy każdej zmianie w `android/` i na `main` publikuje je
-jako najnowsze wydanie (`budzik-dz.apk`). Lokalnie: Android SDK, potem `gradle -p android assembleRelease`.
+GitHub Actions (`.github/workflows/android.yml`) buduje APK przy każdej zmianie w `android/`. Na `main` publikuje je
+jako najnowsze wydanie: `domowe-zadania.apk` i ten sam plik pod starą nazwą `budzik-dz.apk` (z niej pobiera przycisk
+w aplikacji webowej). Lokalnie: Android SDK, potem `gradle -p android assembleRelease`.
 
-Podpis: workflow bierze klucz z sekretów repozytorium `BUDZIK_KEYSTORE_B64` (plik keystore w base64, alias `budzik`)
-i `BUDZIK_KEYSTORE_PASSWORD`. Bez nich podpisuje jednorazowym kluczem, a wtedy nową wersję można zainstalować dopiero
-po odinstalowaniu starej (budziki wracają po ponownym „📲 Budzik na Androida”).
+Podpis: sekrety repozytorium `BUDZIK_KEYSTORE_B64` (plik keystore w base64, alias `budzik`) i
+`BUDZIK_KEYSTORE_PASSWORD`. Nazwa pakietu zostaje `pl.domowezadania.budzik`, więc nowa wersja instaluje się na Budzik DZ
+bez odinstalowania i zachowuje jego ustawienia.
 
-## Instalacja na telefonie dziecka
+## Instalacja
 
-1. W Domowych Zadaniach (Chrome) dziecka: część „Mój budzik” → „📲 Budzik na Androida”. Pobierze się `budzik-dz.apk`.
-2. Otwórz pobrany plik i zezwól Chrome na instalowanie aplikacji z nieznanych źródeł.
-3. Po instalacji stuknij „📲 Budzik na Androida” jeszcze raz: aplikacja się połączy i pokaże budziki.
-4. W aplikacji Budzik DZ stuknij przyciski z ⚠️ (powiadomienia, pełny ekran, oszczędzanie baterii) i zrób
-   „🔔 Próbny budzik za 10 sekund” z zablokowanym ekranem.
+1. Telefon z Budzikiem DZ: po prostu zainstaluj nowy APK z wydania (zastąpi Budzik DZ, ikona zmieni nazwę na „Domowe
+   Zadania”). Nowy telefon: w Domowych Zadaniach w Chrome → Ustawienia → „📲 Aplikacja na Androida”, albo pobierz
+   `domowe-zadania.apk` z najnowszego wydania. Telefon dziecka z Family Link: najpierw w Family Link zezwól na aplikacje
+   z nieznanych źródeł.
+2. Otwórz aplikację, dołącz do rodziny kodem i wybierz, kim jesteś (aplikacja ma osobne logowanie niż Chrome).
+3. Za pierwszym razem otworzy się „Ustawienia telefonu”: przejdź wszystkie kroki z ⚠️, potem „🔔 Próba z serwera”
+   z zablokowanym ekranem.
+4. Stara ikona Domowych Zadań z Chrome może zostać, ale lepiej ją usunąć albo wyłączyć jej powiadomienia, żeby nie
+   mylić dzieci.

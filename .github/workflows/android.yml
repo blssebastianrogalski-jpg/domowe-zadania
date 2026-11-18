@@ -1,5 +1,6 @@
-# Builds the Android alarm app (folder android/). On main it publishes the APK as the latest release,
-# which the web app downloads from: releases/latest/download/budzik-dz.apk
+# Builds the Android app (folder android/: the web app with native notifications and the alarm clock).
+# On main it publishes the APK as the latest release: domowe-zadania.apk, and the same file as budzik-dz.apk,
+# which the web app downloads from (releases/latest/download/budzik-dz.apk).
 name: Budzik Android
 
 on:
@@ -44,17 +45,21 @@ jobs:
           BUDZIK_KEYSTORE_PASSWORD: ${{ secrets.BUDZIK_KEYSTORE_PASSWORD }}
         run: gradle -p android assembleRelease --no-daemon
       - name: Rename
-        run: cp android/app/build/outputs/apk/release/app-release.apk budzik-dz.apk
+        run: |
+          cp android/app/build/outputs/apk/release/app-release.apk domowe-zadania.apk
+          cp domowe-zadania.apk budzik-dz.apk
       - uses: actions/upload-artifact@v4
         with:
-          name: budzik-dz
-          path: budzik-dz.apk
+          name: domowe-zadania
+          path: domowe-zadania.apk
       - name: Publish release
         if: github.event_name != 'pull_request'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: budzik-${{ github.run_number }}
-          name: Budzik DZ (Android) ${{ github.run_number }}
-          body: Aplikacja Android z prawdziwym budzikiem dla Domowych Zadań. Instrukcja w android/README.md.
-          files: budzik-dz.apk
+          name: Domowe Zadania (Android) ${{ github.run_number }}
+          body: Domowe Zadania na Androida, z natywnymi powiadomieniami i budzikiem. Instrukcja w android/README.md.
+          files: |
+            domowe-zadania.apk
+            budzik-dz.apk
           make_latest: "true"

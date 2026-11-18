@@ -124,6 +124,7 @@ function render() {
   if (v === "moje") renderMoje();
   if (v === "rodzic") renderRodzic();
   if (v === "ustawienia") renderSettings();
+  nativeLink();
   checkAlarm();
 }
 setInterval(() => { if (!document.hidden && view() === "moje") render(); }, 20000);
@@ -190,9 +191,15 @@ function renderMoje() {
   const later = mine.filter((t) => st(t) === "snoozed" && snoozeAt(t) > now).sort((a, b) => snoozeAt(a) - snoozeAt(b));
 
   const hint = $("notif-hint");
-  const perm = "Notification" in window ? Notification.permission : "unsupported";
-  hint.hidden = perm === "granted";
-  if (!hint.hidden) { hint.replaceChildren("Przypomnienia na zablokowanym telefonie są wyłączone. ", el("a", { href: "#ustawienia" }, "Włącz w ustawieniach")); }
+  if (NATIVE) {
+    // Android app: notifications are native, the app knows whether the phone allows them
+    hint.hidden = nativeCall("notifOk", true);
+    if (!hint.hidden) hint.replaceChildren("Telefon blokuje powiadomienia tej aplikacji. ", el("a", { href: "#", onclick: (e) => { e.preventDefault(); nativeCall("openSetup"); } }, "Popraw ustawienia telefonu"));
+  } else {
+    const perm = "Notification" in window ? Notification.permission : "unsupported";
+    hint.hidden = perm === "granted";
+    if (!hint.hidden) { hint.replaceChildren("Przypomnienia na zablokowanym telefonie są wyłączone. ", el("a", { href: "#ustawienia" }, "Włącz w ustawieniach")); }
+  }
 
   const fw = $("focus-wrap"); fw.replaceChildren();
   if (!active.length) fw.append(el("div", { class: "panel" }, el("h2", {}, later.length ? "Na teraz nic. Odłożone zadania wrócą same." : "Na dziś wszystko zrobione."), el("p", { class: "muted" }, later.length ? "Zobacz listę „Odłożone” poniżej." : "Dobra robota.")));
@@ -223,8 +230,9 @@ function renderMoje() {
   $("my-alarm-acts").replaceChildren(
     el("button", { class: "primary", onclick: nightOn }, "🌙 Tryb nocny"),
     el("button", { onclick: testSound }, "🔊 Sprawdź głośność"),
-    el("button", { onclick: testLocked }, "🔒 Test na zablokowanym ekranie"),
-    ...(/Android/i.test(navigator.userAgent) ? [el("button", { class: "primary", onclick: linkAndroid }, "📲 Budzik na Androida")] : []));
+    ...(NATIVE ? [el("button", { class: "primary", onclick: () => nativeCall("openSetup") }, "⚙️ Budzik i ustawienia telefonu")]
+      : [el("button", { onclick: testLocked }, "🔒 Test na zablokowanym ekranie"),
+        ...(/Android/i.test(navigator.userAgent) ? [el("button", { class: "primary", onclick: linkAndroid }, "📲 Aplikacja na Androida")] : [])]));
 }
 
 function focusCard(t, more) {
@@ -635,14 +643,31 @@ async function testLocked() {
   toast("Zablokuj teraz ekran. Za 15 sekund przyjdzie próbny budzik. Cisza? Ustawienia → Aplikacje → Chrome → Powiadomienia: kanał tej strony ma mieć dźwięk, a tryb Nie przeszkadzać i tryb snu muszą być wyłączone.", 9000);
 }
 
-// Android app with a real alarm clock (folder android/): it gets a device secret that reads only this child's alarms.
+// Android app (folder android/): this web app inside a native shell, with native notifications and a real alarm clock.
+// It gets a device secret that reads only this member's alarms and notifications.
 // If the app is not installed yet, Chrome downloads it instead (browser_fallback_url).
 const APK_URL = "https://github.com/blssebastianrogalski-jpg/domowe-zadania/releases/latest/download/budzik-dz.apk";
 async function linkAndroid() {
   const { data, error } = await sb.rpc("dz_alarm_link");
   if (error || !data) return toast(error ? errMsg(error) : "Nie udało się. Spróbuj jeszcze raz.");
-  toast("Nie masz jeszcze aplikacji Budzik DZ? Pobierze się teraz. Zainstaluj ją i stuknij ten przycisk jeszcze raz.", 9000);
+  toast("Nie masz jeszcze aplikacji Domowe Zadania na Androida? Pobierze się teraz. Zainstaluj ją i stuknij ten przycisk jeszcze raz.", 9000);
   location.href = "intent://link?s=" + data + "#Intent;scheme=dzbudzik;package=pl.domowezadania.budzik;S.browser_fallback_url=" + encodeURIComponent(APK_URL) + ";end";
+}
+
+// Inside the Android app (window.DZAndroid, MainActivity.java): link the app's notifications and alarms to whoever
+// uses this phone, by itself, and again after the person on this phone changes. Tried once per page load and person.
+const NATIVE = typeof window.DZAndroid === "object" && window.DZAndroid !== null;
+function nativeCall(fn, fallback, ...args) {
+  try { const r = window.DZAndroid[fn](...args); return r === undefined ? fallback : r; } catch { return fallback; }
+}
+let nativeTried = null;
+async function nativeLink() {
+  if (!NATIVE || !S.device || !S.me || nativeTried === S.me.id) return;
+  if (nativeCall("linkedMember", "") === S.me.id) return;
+  nativeTried = S.me.id;
+  const { data, error } = await sb.rpc("dz_alarm_link");
+  if (error || !data) return toast("Nie udało się połączyć powiadomień: " + (error ? errMsg(error) : "spróbuj później") + ".");
+  nativeCall("link", null, data, S.me.id, S.me.name);
 }
 
 // Night mode: the app stays open on the charger with a dark clock and rings at the exact time, even on silent
@@ -910,14 +935,25 @@ $("add-form").addEventListener("submit", async (e) => {
 const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
 const standalone = matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
 function renderSettings() {
-  const supported = "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
-  const perm = supported ? Notification.permission : "unsupported";
-  $("notif-state").textContent = !supported ? (isIOS && !standalone ? "Najpierw dodaj aplikację do ekranu początkowego." : "Ta przeglądarka nie obsługuje powiadomień push.")
-    : perm === "granted" ? "Powiadomienia są włączone na tym telefonie." : perm === "denied" ? "Powiadomienia są zablokowane w ustawieniach przeglądarki lub telefonu." : "Powiadomienia są wyłączone.";
-  $("notif-on").hidden = !supported || perm === "denied";
-  $("notif-on").textContent = perm === "granted" ? "Odśwież rejestrację powiadomień" : "Włącz powiadomienia";
-  $("notif-test").hidden = perm !== "granted";
-  $("ios-hint").hidden = !(isIOS && !standalone);
+  if (NATIVE) {
+    // Android app: notifications are native (no Web Push); the phone's settings screen is in the app itself
+    $("notif-state").textContent = nativeCall("notifOk", true) ? "Powiadomienia obsługuje aplikacja na Androida." : "Telefon blokuje część powiadomień. Otwórz ustawienia telefonu poniżej.";
+    $("notif-on").hidden = false;
+    $("notif-on").textContent = "⚙️ Ustawienia telefonu (Xiaomi, bateria, budzik)";
+    $("notif-test").hidden = true;
+    $("ios-hint").hidden = true;
+  } else {
+    const supported = "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
+    const perm = supported ? Notification.permission : "unsupported";
+    $("notif-state").textContent = !supported ? (isIOS && !standalone ? "Najpierw dodaj aplikację do ekranu początkowego." : "Ta przeglądarka nie obsługuje powiadomień push.")
+      : perm === "granted" ? "Powiadomienia są włączone na tym telefonie." : perm === "denied" ? "Powiadomienia są zablokowane w ustawieniach przeglądarki lub telefonu." : "Powiadomienia są wyłączone.";
+    $("notif-on").hidden = !supported || perm === "denied";
+    $("notif-on").textContent = perm === "granted" ? "Odśwież rejestrację powiadomień" : "Włącz powiadomienia";
+    $("notif-test").hidden = perm !== "granted";
+    $("ios-hint").hidden = !(isIOS && !standalone);
+  }
+  // In Chrome on Android: the native app, which Xiaomi phones do not put to sleep like Chrome
+  $("android-app").hidden = NATIVE || !/Android/i.test(navigator.userAgent);
   $("invite-panel").hidden = !S.isParent;
   if (S.isParent && S.family) {
     $("invite-code").textContent = S.family.invite_code;
@@ -1008,7 +1044,8 @@ async function enablePush() {
   } catch (e) { toast("Nie udało się włączyć powiadomień: " + errMsg(e)); }
   render();
 }
-$("notif-on").onclick = enablePush;
+$("notif-on").onclick = () => (NATIVE ? nativeCall("openSetup") : enablePush());
+$("android-app").onclick = linkAndroid;
 // Local test: shows the same kind of pop-up a reminder does, so the family can check sound and banner settings
 $("notif-test").onclick = async () => {
   if (!("Notification" in window) || Notification.permission !== "granted") { toast("Najpierw włącz powiadomienia."); return; }

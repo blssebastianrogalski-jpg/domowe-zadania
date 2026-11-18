@@ -21,7 +21,8 @@ import java.net.URL;
 import java.nio.charset.StandardCharsets;
 
 /**
- * Waits for the parent's messages (komunikaty) all the time, so one rings within a few seconds of being sent.
+ * Waits for the parent's messages (komunikaty) and for notifications (task reminders, news for parents, see Inbox)
+ * all the time, so they arrive within a few seconds of being sent, without Chrome and without Web Push.
  * It keeps one long request open to the dz-czekaj function, which answers as soon as the child's alarms change.
  * Runs as a quiet foreground service (a small permanent notification), so Android keeps it and its network
  * also while the phone sleeps. The 5 minute sync in Alarms stays as a fallback.
@@ -75,7 +76,7 @@ public class WaitService extends Service {
             if (r.optBoolean("changed") || first) {
                 // Something changed (or we just started): fetch the alarms; a fresh message is scheduled to ring at once
                 wake.acquire(20_000);
-                try { Alarms.fetch(this); Alarms.schedule(this); } finally { if (wake.isHeld()) wake.release(); }
+                try { Alarms.fetch(this); Alarms.schedule(this); Inbox.fetch(this); } finally { if (wake.isHeld()) wake.release(); }
             }
         }
         running = false;
@@ -109,13 +110,13 @@ public class WaitService extends Service {
     }
 
     private Notification notification() {
-        NotificationChannel ch = new NotificationChannel(CHANNEL, "Czekanie na komunikaty", NotificationManager.IMPORTANCE_MIN);
-        ch.setDescription("Budzik DZ czeka na wiadomości od rodzica, żeby zadzwonić od razu");
+        NotificationChannel ch = new NotificationChannel(CHANNEL, "Połączenie z serwerem", NotificationManager.IMPORTANCE_MIN);
+        ch.setDescription("Stałe małe powiadomienie: aplikacja czeka na przypomnienia i wiadomości. Można je ukryć, nie wyłączać aplikacji.");
         ch.setShowBadge(false);
         getSystemService(NotificationManager.class).createNotificationChannel(ch);
         return new Notification.Builder(this, CHANNEL)
-                .setSmallIcon(R.drawable.ic_stat).setContentTitle("Budzik DZ czeka na komunikaty")
-                .setContentText("Wiadomość od rodzica zadzwoni od razu.")
+                .setSmallIcon(R.drawable.ic_stat).setContentTitle("Domowe Zadania czekają na przypomnienia")
+                .setContentText("Przypomnienia i wiadomości przyjdą od razu.")
                 .setContentIntent(Alarms.showIntent(this)).setOngoing(true).build();
     }
 }
