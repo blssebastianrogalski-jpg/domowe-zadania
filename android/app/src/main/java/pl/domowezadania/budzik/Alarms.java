@@ -219,6 +219,10 @@ final class Alarms {
     /** Off the main thread: fetch, then schedule, then show new notifications (task reminders etc.). */
     static void syncAsync(Context c, Runnable done) {
         Context app = c.getApplicationContext();
-        new Thread(() -> { fetch(app); schedule(app); Inbox.fetch(app); if (done != null) done.run(); }).start();
+        new Thread(() -> {
+            fetch(app); schedule(app); Inbox.fetch(app);
+            if (done != null) done.run();
+            Updater.maybeCheck(app); // a new app version: one notification, at most a check every 6 hours
+        }).start();
     }
 }

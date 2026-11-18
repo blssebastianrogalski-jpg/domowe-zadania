@@ -29,7 +29,7 @@ import java.time.temporal.ChronoUnit;
  * Opened from the web app (window.DZAndroid.openSetup) and once by itself right after the first link.
  */
 public class SetupActivity extends Activity {
-    static final String EXTRA_FIRST = "first";
+    static final String EXTRA_FIRST = "first", EXTRA_UPDATE = "update";
     private static final String[] WD = {"nd", "pn", "wt", "śr", "cz", "pt", "sb"};
     private LinearLayout box;
 
@@ -48,11 +48,20 @@ public class SetupActivity extends Activity {
             requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, 1);
     }
 
-    @Override protected void onResume() { super.onResume(); render(); Alarms.syncAsync(this, () -> runOnUiThread(this::render)); WaitService.start(this); }
+    @Override protected void onResume() {
+        super.onResume();
+        // Opened from the "new version" notification: start the update right away
+        if (getIntent().getBooleanExtra(EXTRA_UPDATE, false)) { getIntent().removeExtra(EXTRA_UPDATE); Updater.install(this); }
+        render(); Alarms.syncAsync(this, () -> runOnUiThread(this::render)); WaitService.start(this); }
 
     private void render() {
         box.removeAllViews();
         box.addView(Ui.text(this, "⚙️ Ustawienia telefonu", 28, Ui.INK, true));
+        long upd = Updater.available(this);
+        if (upd > 0) {
+            box.addView(Ui.text(this, "Jest nowa wersja aplikacji (" + upd + ", masz " + Updater.current(this) + ").", 17, Ui.WARN, true));
+            box.addView(Ui.button(this, "⬆️ Aktualizuj", Ui.WARN, Color.WHITE, v -> Updater.install(this)));
+        }
         JSONObject feed = Alarms.cached(this);
         boolean linked = Alarms.linked(this);
         if (getIntent().getBooleanExtra(EXTRA_FIRST, false))
@@ -110,6 +119,13 @@ public class SetupActivity extends Activity {
         box.addView(Ui.button(this, "Odśwież budziki", Ui.LIGHT, Ui.ACCENT, v -> Alarms.syncAsync(this, () -> runOnUiThread(() -> {
             render(); Toast.makeText(this, "Budziki odświeżone.", Toast.LENGTH_SHORT).show();
         }))));
+        box.addView(Ui.text(this, "Aplikacja", 22, Ui.INK, true));
+        box.addView(Ui.text(this, "Wersja " + Updater.current(this) + ". Zmiany na stronie przychodzą same; nowa wersja aplikacji instaluje się przyciskiem, bez pobierania ze strony.", 14, Ui.MUTED, false));
+        box.addView(Ui.button(this, "Sprawdź aktualizację", Ui.LIGHT, Ui.ACCENT, v -> {
+            android.content.Context app = getApplicationContext();
+            new Thread(() -> { long nv = Updater.check(app); runOnUiThread(() -> {
+                Toast.makeText(app, nv > 0 ? "Jest nowa wersja " + nv + "." : "Masz najnowszą wersję.", Toast.LENGTH_SHORT).show(); render(); }); }).start();
+        }));
         long synced = Alarms.prefs(this).getLong("synced", 0);
         if (synced > 0) box.addView(Ui.text(this, "Ostatnio pobrane: " + time(synced) + ". Zmiany rodzica dochodzą zwykle w kilka sekund, najpóźniej w 15 minut.", 14, Ui.MUTED, false));
     }

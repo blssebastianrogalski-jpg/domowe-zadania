@@ -3,6 +3,8 @@ package pl.domowezadania.budzik;
 import android.Manifest;
 import android.annotation.SuppressLint;
 import android.app.Activity;
+import android.app.AlertDialog;
+import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
@@ -71,9 +73,27 @@ public class MainActivity extends Activity {
         web.onResume();
         WaitService.start(this);
         // After a long break (or a failed start) load the app afresh, so it does not show yesterday's list
+        offerUpdate();
         if (resumedOnce && (!loadedOk || (pausedAt > 0 && System.currentTimeMillis() - pausedAt > 6 * 3600_000L))) load(null);
         resumedOnce = true;
         pausedAt = 0;
+    }
+
+    /** A newer version on GitHub: ask once per version, then the Update button stays in Ustawienia telefonu. */
+    private void offerUpdate() {
+        Context app = getApplicationContext();
+        new Thread(() -> {
+            long n = System.currentTimeMillis() - Alarms.prefs(app).getLong("update_checked", 0) > 3600_000L ? Updater.check(app) : Updater.available(app);
+            if (n == 0 || Alarms.prefs(app).getLong("update_asked", 0) >= n) return;
+            runOnUiThread(() -> {
+                if (isFinishing()) return;
+                Alarms.prefs(app).edit().putLong("update_asked", n).apply();
+                new AlertDialog.Builder(this).setTitle("Nowa wersja aplikacji")
+                        .setMessage("Zaktualizować teraz? Android pokaże okno instalacji, wystarczy je potwierdzić.")
+                        .setPositiveButton("Aktualizuj", (d, w) -> Updater.install(this))
+                        .setNegativeButton("Później", null).show();
+            });
+        }).start();
     }
 
     @Override protected void onPause() { web.onPause(); pausedAt = System.currentTimeMillis(); super.onPause(); }
