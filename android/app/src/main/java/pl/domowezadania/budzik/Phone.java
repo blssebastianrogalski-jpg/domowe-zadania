@@ -48,6 +48,9 @@ final class Phone {
                 .putExtra("extra_pkgname", c.getPackageName());
     }
 
+    /** "Dostęp do Nie przeszkadzać": the list where the app is turned on (no per-app screen exists for it). */
+    static Intent dndAccess() { return new Intent(Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS); }
+
     static Intent notifications(Context c) {
         return new Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, c.getPackageName());
     }
@@ -56,8 +59,37 @@ final class Phone {
     static boolean notificationsOk(Context c) {
         NotificationManager nm = c.getSystemService(NotificationManager.class);
         if (!nm.areNotificationsEnabled()) return false;
-        NotificationChannel ch = nm.getNotificationChannel(Inbox.CHANNEL_TASKS);
+        NotificationChannel ch = nm.getNotificationChannel(Inbox.tasksChannel(c));
         return ch == null || ch.getImportance() != NotificationManager.IMPORTANCE_NONE;
+    }
+
+    /** How loud the phone is right now, for the report to the server (Inbox.report): the things that silence a
+     *  notification without the app knowing. */
+    static org.json.JSONObject soundState(Context c) throws org.json.JSONException {
+        NotificationManager nm = c.getSystemService(NotificationManager.class);
+        android.media.AudioManager am = c.getSystemService(android.media.AudioManager.class);
+        NotificationChannel ch = nm.getNotificationChannel(Inbox.tasksChannel(c));
+        NotificationChannel call = nm.getNotificationChannel(Inbox.callChannel(c));
+        int mode = am.getRingerMode();
+        int filter = nm.getCurrentInterruptionFilter();
+        org.json.JSONObject o = new org.json.JSONObject()
+                .put("enabled", nm.areNotificationsEnabled())
+                .put("ringer", mode == android.media.AudioManager.RINGER_MODE_SILENT ? "silent"
+                        : mode == android.media.AudioManager.RINGER_MODE_VIBRATE ? "vibrate" : "normal")
+                .put("dnd", filter > NotificationManager.INTERRUPTION_FILTER_ALL)
+                .put("vol_notif", am.getStreamVolume(android.media.AudioManager.STREAM_NOTIFICATION))
+                .put("vol_alarm", am.getStreamVolume(android.media.AudioManager.STREAM_ALARM))
+                .put("vol_alarm_max", am.getStreamMaxVolume(android.media.AudioManager.STREAM_ALARM))
+                .put("model", Build.MANUFACTURER + " " + Build.MODEL + " / Android " + Build.VERSION.RELEASE);
+        if (ch != null) o.put("channel_importance", ch.getImportance()).put("channel_sound", ch.getSound() != null);
+        if (call != null) o.put("call_importance", call.getImportance());
+        // Parent's sound (migration 014): "ps" tells the web app this version knows it
+        o.put("ps", true).put("ps_sound", ParentSound.sound(c) == null ? org.json.JSONObject.NULL : ParentSound.sound(c))
+                .put("ps_volume", ParentSound.volume(c))
+                .put("dnd_filter", filter)
+                .put("dnd_access", nm.isNotificationPolicyAccessGranted());
+        try { o.put("battery_free", c.getSystemService(android.os.PowerManager.class).isIgnoringBatteryOptimizations(c.getPackageName())); } catch (Exception ignored) {}
+        return o;
     }
 
     /** Opens the screen; if this phone does not have it, the app's system settings instead. True if the special one opened. */

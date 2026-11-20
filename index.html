@@ -189,6 +189,17 @@ try { const k = localStorage.getItem("dz-skin"); if (k && k !== "morski") { docu
       </div>
       <p class="muted small">Licz każde „pamiętasz, że miałeś…”. Pierwsze 2 dni zapisuj bez aplikacji, potem z nią.</p>
     </div>
+    <details class="panel sect sect-top" id="sect-sound" data-sect="r-dzwiek">
+      <summary><span class="sect-title">🔊 Dźwięk powiadomień dzieci</span><span class="sect-count" id="sound-count"></span></summary>
+      <div class="sect-body">
+        <p class="muted small">Dźwięk i głośność przypomnień, wołania i podsumowań na telefonie dziecka. Dziecko nie ma tej opcji w aplikacji. Aplikacja Domowe Zadania na Androidzie gra ten dźwięk sama, jak budzik, więc tryb cichy i wibracje go nie wyciszą.</p>
+        <ul id="sound-kids" class="rows"></ul>
+        <details class="call-more">
+          <summary class="muted small">Czego aplikacja nie zablokuje</summary>
+          <p class="muted small">Android nie pozwala aplikacji zabronić dziecku wyłączenia powiadomień w ustawieniach telefonu, „Nie przeszkadzać”, zatrzymania ani odinstalowania aplikacji. Te rzeczy telefon zgłasza, a Ty widzisz je tu przy dziecku. „Całkowitą ciszę” aplikacja przełączy na „Tylko alarmy”, jeśli na telefonie dziecka włączysz jej „Dostęp do Nie przeszkadzać” (⚙ Ustawienia telefonu w aplikacji). Odinstalowanie zablokujesz w Family Link. Przy samej stronie w przeglądarce (bez aplikacji) dźwięk ustawia telefon.</p>
+        </details>
+      </div>
+    </details>
     <details class="panel sect sect-top" id="sect-members" data-sect="r-domownicy">
       <summary><span class="sect-title">👪 Domownicy</span><span class="sect-count" id="members-count"></span></summary>
       <div class="sect-body">

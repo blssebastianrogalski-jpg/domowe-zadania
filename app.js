@@ -82,6 +82,9 @@ async function loadAll() {
   S.tally = Object.fromEntries((tally.data || []).map((r) => [r.day, r.count]));
   S.me = S.members.find((m) => m.id === dev.member_id) || null;
   S.isParent = S.me?.role === "parent";
+  // Phone state of each member's Android app (migration 014); before it, or for a child, nothing
+  S.phones = [];
+  if (S.isParent) { const { data } = await sb.rpc("dz_phone_status"); S.phones = Array.isArray(data) ? data : []; }
 }
 
 let channel = null;
@@ -425,6 +428,86 @@ function renderRodzic() {
   if (keep) sel.value = keep; else { const firstChild = S.members.find((m) => m.role === "child"); if (firstChild) sel.value = firstChild.id; }
   renderAlarms();
   renderSchool();
+  renderSound();
+}
+
+// ---------- dźwięk powiadomień dziecka (migration 014): the parent picks it, the Android app plays it itself ----------
+const SOUNDS = [
+  ["glos_wykonaj", "🗣 Głos: „Wykonaj zadanie!”"], ["glos_czas", "🗣 Głos: „Hej! Czas na zadanie!”"],
+  ["dzwonek", "🔔 Dzwonek"], ["gong", "🥁 Gong"], ["budzik", "⏰ Budzik (szybkie piski)"], ["melodia", "🎵 Melodyjka"],
+  ["syrena", "🚨 Syrena"], ["telefon", "📱 Dźwięk alarmu telefonu"],
+];
+const soundName = (k) => (SOUNDS.find((x) => x[0] === k) || [k, k])[1];
+const soundDraft = {}; // unsaved choices survive the minute refresh
+let previewAudio = null;
+function preview(key, vol) {
+  if (key === "telefon") { toast("Tego dźwięku nie da się tu odtworzyć: to dźwięk alarmu ustawiony w telefonie dziecka. Użyj „Zagraj na telefonie”."); return; }
+  try { previewAudio?.pause(); } catch {}
+  previewAudio = new Audio("sounds/" + key + ".wav");
+  previewAudio.volume = Math.max(0.1, Math.min(1, vol / 100));
+  previewAudio.play().catch(() => toast("Przeglądarka nie odtworzyła dźwięku."));
+}
+// What the phone reported (Phone.soundState in the Android app) turned into short notes for the parent
+function phoneNotes(m, ph) {
+  if (!ph) return [{ bad: true, t: "📵 Brak aplikacji Domowe Zadania na Androidzie (albo nie połączona). Bez niej dźwięk ustawia telefon." }];
+  const at = ph.phone_state_at || ph.last_seen_at, ps = ph.phone_state || {}, notes = [];
+  const quiet = at ? (Date.now() - Date.parse(at)) / 60000 : 1e9;
+  if (quiet > 20) notes.push({ bad: true, t: "📵 Telefon nie odzywa się od " + (at ? ago(at) : "dawna") + ": wyłączony, bez internetu albo aplikacja zatrzymana." });
+  else notes.push({ t: "📱 Telefon odezwał się " + ago(at) });
+  if (!ps.ps) { notes.push({ bad: true, t: "⬆️ Stara wersja aplikacji: zaktualizuj ją na telefonie dziecka, żeby dźwięk od rodzica działał." }); }
+  const own = !!m.notify_sound && ps.ps;
+  if (ps.enabled === false) notes.push({ bad: true, t: "🔕 Dziecko wyłączyło powiadomienia aplikacji" + (own ? " (dźwięk od rodzica i tak zagra, ale bez napisu na ekranie)" : "") });
+  else if (ps.channel_importance === 0) notes.push({ bad: true, t: "🔕 Wyłączone powiadomienia o zadaniach" + (own ? " (dźwięk od rodzica i tak zagra)" : "") });
+  if (ps.ringer === "silent") notes.push({ bad: !own, t: "🔇 Telefon wyciszony" + (own ? " (dźwięk od rodzica i tak zagra)" : "") });
+  else if (ps.ringer === "vibrate") notes.push({ bad: !own, t: "📳 Same wibracje" + (own ? " (dźwięk od rodzica i tak zagra)" : "") });
+  if (ps.dnd) {
+    if (ps.dnd_filter === 3) notes.push({ bad: !ps.dnd_access, t: ps.dnd_access ? "🌙 Całkowita cisza: aplikacja przełączy na „Tylko alarmy”" : "🌙 Całkowita cisza zagłusza wszystko. Włącz aplikacji „Dostęp do Nie przeszkadzać” na telefonie dziecka." });
+    else notes.push({ bad: !own, t: "🌙 Nie przeszkadzać włączone" + (own ? " (alarmy zwykle przechodzą)" : "") });
+  }
+  if (own && ps.dnd_access === false && !(ps.dnd && ps.dnd_filter === 3)) notes.push({ t: "ℹ️ Brak wyjątku od „Nie przeszkadzać” (⚙ Ustawienia telefonu w aplikacji dziecka)" });
+  if (!own && ps.vol_notif === 0) notes.push({ bad: true, t: "🔈 Głośność powiadomień na zero" });
+  if (own && (ps.ps_sound || null) !== m.notify_sound) notes.push({ t: "⏳ Telefon jeszcze nie pobrał nowego dźwięku (zwykle kilka sekund, do 5 minut)" });
+  return notes;
+}
+function renderSound() {
+  const kids = S.members.filter((m) => m.role === "child");
+  const ul = $("sound-kids"); ul.replaceChildren();
+  let bad = 0;
+  for (const m of kids) {
+    const d = soundDraft[m.id] || { sound: m.notify_sound || "", vol: m.notify_volume || 80 };
+    const sel = el("select", { "aria-label": "Dźwięk dla " + m.name }, el("option", { value: "" }, "Decyduje telefon (jak dotąd)"), ...SOUNDS.map(([k, n]) => el("option", { value: k }, n)));
+    sel.value = d.sound;
+    const vol = el("input", { type: "range", min: "10", max: "100", step: "10", value: String(d.vol), "aria-label": "Głośność dla " + m.name });
+    const volTxt = el("span", { class: "muted small" }, d.vol + "%");
+    const dirty = () => (sel.value || null) !== (m.notify_sound || null) || (sel.value && Number(vol.value) !== (m.notify_volume || 80));
+    const save = el("button", { class: "primary", type: "button" }, "Zapisz");
+    const sync = () => { soundDraft[m.id] = { sound: sel.value, vol: Number(vol.value) }; volTxt.textContent = vol.value + "%"; vol.disabled = !sel.value; save.disabled = !dirty(); };
+    sel.addEventListener("change", sync); vol.addEventListener("input", sync);
+    save.addEventListener("click", async () => {
+      save.disabled = true;
+      const { data, error } = await sb.rpc("dz_set_sound", { p_member: m.id, p_sound: sel.value || null, p_volume: Number(vol.value) });
+      if (error) { save.disabled = false; toast(/dz_set_sound/.test(errMsg(error)) ? "Ta funkcja nie jest jeszcze włączona na serwerze." : errMsg(error)); return; }
+      delete soundDraft[m.id];
+      toast(data ? (sel.value ? "Zapisano. Telefon " + m.name + " pobierze dźwięk w kilka sekund." : "Zapisano. Dźwięk znów ustawia telefon.") : "Nie udało się zapisać.");
+      await loadAll(); render();
+    });
+    const notes = phoneNotes(m, S.phones.find((p) => p.member_id === m.id));
+    if (notes.some((n) => n.bad)) bad++;
+    ul.append(el("li", { class: "sound-kid" },
+      el("strong", {}, m.name),
+      el("div", { class: "sound-row" }, sel, el("button", { class: "ghost", type: "button", onclick: () => sel.value ? preview(sel.value, Number(vol.value)) : toast("Wybierz dźwięk z listy.") }, "▶ Posłuchaj")),
+      el("div", { class: "sound-row sound-vol" }, el("span", { class: "muted small" }, "Głośność"), vol, volTxt),
+      el("div", { class: "inline" }, save,
+        el("button", { class: "ghost", type: "button", onclick: async () => {
+          if (!m.notify_sound) { toast("Najpierw wybierz i zapisz dźwięk."); return; }
+          const { error } = await sb.rpc("dz_sound_test", { p_member: m.id });
+          toast(error ? errMsg(error) : "Telefon " + m.name + " zagra dźwięk za kilka sekund.");
+        } }, "📱 Zagraj na telefonie")),
+      el("ul", { class: "sound-notes" }, ...notes.map((n) => el("li", { class: n.bad ? "bad" : "" }, n.t)))));
+    sync();
+  }
+  if (!kids.length) ul.append(el("li", { class: "empty" }, "Najpierw dodaj dziecko w „Domownicy”."));
+  $("sound-count").textContent = bad ? "⚠ " + bad : "";
 }
 
 // ---------- zawołaj dziecko (migration 012): one tap, the child gets "📣 Tata cię woła" and answers ----------

@@ -71,6 +71,8 @@ public class MainActivity extends Activity {
     @Override protected void onResume() {
         super.onResume();
         web.onResume();
+        // The child opened the app (also through Zrobione / Za 15 min): a ringing reminder has done its job
+        ReminderRing.stop(this);
         WaitService.start(this);
         // After a long break (or a failed start) load the app afresh, so it does not show yesterday's list
         offerUpdate();

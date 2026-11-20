@@ -22,6 +22,12 @@ import java.time.OffsetDateTime;
  */
 final class Inbox {
     static final String CHANNEL_TASKS = "zadania", CHANNEL_PARENT = "rodzic", CHANNEL_CALL = "wolanie";
+    /** Silent twins of the two channels above, used when a parent chose the sound (ParentSound): the app plays it
+     *  itself, so the channel's own sound (which the child can change) is not used at all. */
+    static final String CHANNEL_TASKS_PS = "zadania_od_rodzica", CHANNEL_CALL_PS = "wolanie_od_rodzica";
+
+    static String tasksChannel(Context c) { return ParentSound.on(c) ? CHANNEL_TASKS_PS : CHANNEL_TASKS; }
+    static String callChannel(Context c) { return ParentSound.on(c) ? CHANNEL_CALL_PS : CHANNEL_CALL; }
     /** Older than this when it finally arrives (the phone slept): skipped, a stale reminder only confuses. */
     private static final long STALE_MS = 15 * 60_000;
     private static final long[] VIBRATE = {0, 600, 250, 600, 250, 900};
@@ -49,6 +55,18 @@ final class Inbox {
         nm.createNotificationChannel(t);
         nm.createNotificationChannel(p);
         nm.createNotificationChannel(w);
+        if (ParentSound.on(c)) {
+            NotificationChannel tp = new NotificationChannel(CHANNEL_TASKS_PS, "Przypomnienia (dźwięk od rodzica)", NotificationManager.IMPORTANCE_HIGH);
+            tp.setDescription("Przypomnienia o zadaniach. Dźwięk i głośność ustawia rodzic, gra je aplikacja.");
+            tp.enableVibration(true); tp.setVibrationPattern(VIBRATE); tp.setSound(null, null);
+            tp.setLockscreenVisibility(Notification.VISIBILITY_PUBLIC);
+            NotificationChannel wp = new NotificationChannel(CHANNEL_CALL_PS, "Rodzic woła (dźwięk od rodzica)", NotificationManager.IMPORTANCE_HIGH);
+            wp.setDescription("Rodzic woła dziecko. Dźwięk i głośność ustawia rodzic, gra je aplikacja.");
+            wp.enableVibration(true); wp.setVibrationPattern(new long[]{0, 500, 200, 500, 200, 500}); wp.setSound(null, null);
+            wp.setLockscreenVisibility(Notification.VISIBILITY_PUBLIC);
+            nm.createNotificationChannel(tp);
+            nm.createNotificationChannel(wp);
+        }
     }
 
     /** Fetches and shows new notifications (blocking, call off the main thread). */
@@ -62,16 +80,56 @@ final class Inbox {
         try {
             JSONObject r = new JSONObject(body);
             JSONArray items = r.optJSONArray("items");
+            JSONArray shown = new JSONArray(), skipped = new JSONArray();
+            boolean loud = false, sound = false;
             for (int i = 0; items != null && i < items.length(); i++) {
                 JSONObject it = items.optJSONObject(i);
                 if (it == null) continue;
                 long at = 0;
                 try { at = OffsetDateTime.parse(it.optString("at")).toInstant().toEpochMilli(); } catch (Exception ignored) {}
-                if (at > 0 && System.currentTimeMillis() - at > STALE_MS) continue;
+                if (at > 0 && System.currentTimeMillis() - at > STALE_MS) { skipped.put(it.optLong("id")); continue; }
                 JSONObject p = it.optJSONObject("p");
-                if (p != null) show(c, p);
+                if (p == null) continue;
+                show(c, p);
+                shown.put(it.optLong("id"));
+                String kind = p.optString("kind");
+                if (!"settings".equals(kind) && !"help".equals(kind)) sound = true;
+                // Several loud reminders at once ring once: the first one starts the sound
+                if (!loud && p.optBoolean("loud") && !"help".equals(p.optString("kind"))) {
+                    loud = ReminderRing.start(c, p.optString("title", "⏰ Przypomnienie"), p.optString("body"), p.optString("task"));
+                }
             }
+            // The parent's sound, once for the whole batch (a loud reminder already rings with it)
+            if (sound && !loud && ParentSound.on(c)) ParentSound.play(c);
             Alarms.prefs(c).edit().putLong("inbox_after", r.optLong("last", after)).putLong("inbox_seen", System.currentTimeMillis()).apply();
+            if (shown.length() > 0 || skipped.length() > 0) report(c, shown, skipped, loud);
+        } catch (Exception ignored) {}
+        hello(c);
+    }
+
+    /** Every few minutes (on each fetch, at most once a minute): tells the server how the phone is set (silent,
+     *  "Nie przeszkadzać", notifications off; the parent sees it in the web app) and gets the parent's sound
+     *  (migration 014). Before migration 014 it fails quietly and nothing changes. */
+    static void hello(Context c) {
+        long last = Alarms.prefs(c).getLong("hello_at", 0);
+        if (System.currentTimeMillis() - last < 60_000) return;
+        try {
+            JSONObject state = Phone.soundState(c).put("app", Updater.current(c));
+            String body = Alarms.rpcRaw(c, "dz_native_hello", new JSONObject().put("p_state", state));
+            if (body == null || body.equals("null") || !body.startsWith("{")) return;
+            Alarms.prefs(c).edit().putLong("hello_at", System.currentTimeMillis()).apply();
+            ParentSound.save(c, new JSONObject(body));
+        } catch (Exception ignored) {}
+    }
+
+    /** Tells the server what the phone did with the notifications and how the phone is set (migration 013), so
+     *  "the phone stays silent" can be checked from the database instead of guessed. Before migration 013 the call
+     *  fails quietly. */
+    static void report(Context c, JSONArray shown, JSONArray skipped, boolean loud) {
+        try {
+            JSONObject info = Phone.soundState(c).put("loud_started", loud).put("skipped", skipped)
+                    .put("app", Updater.current(c));
+            Alarms.rpcRaw(c, "dz_native_inbox_seen", new JSONObject().put("p_ids", shown).put("p_info", info));
         } catch (Exception ignored) {}
     }
 
@@ -85,10 +143,16 @@ final class Inbox {
     static void show(Context c, JSONObject p) {
         channels(c);
         String kind = p.optString("kind"), task = p.optString("task", "x");
+        // The parent changed the sound (or asked for a test): no notification, only the setting
+        if ("settings".equals(kind)) {
+            ParentSound.save(c, p);
+            if (p.optBoolean("play")) ParentSound.play(c);
+            return;
+        }
         if ("call".equals(kind) && !p.optString("call").isEmpty()) { showCall(c, p); return; }
         boolean parent = "help".equals(kind);
         int id = 1000 + (task.hashCode() & 0xffff);
-        Notification.Builder b = new Notification.Builder(c, parent ? CHANNEL_PARENT : CHANNEL_TASKS)
+        Notification.Builder b = new Notification.Builder(c, parent ? CHANNEL_PARENT : tasksChannel(c))
                 .setSmallIcon(R.drawable.ic_stat)
                 .setContentTitle(p.optString("title", "Domowe Zadania"))
                 .setContentText(p.optString("body"))
@@ -108,7 +172,11 @@ final class Inbox {
             b.addAction(new Notification.Action.Builder(null, "Za 15 min", open(c, "?task=" + task + "&a=snooze15#moje", id * 4 + 2)).build());
         }
         if ("nudge".equals(kind) && p.has("count")) b.setNumber(p.optInt("count"));
-        try { c.getSystemService(NotificationManager.class).notify(id, b.build()); } catch (Exception ignored) {}
+        NotificationManager nm = c.getSystemService(NotificationManager.class);
+        // A repeat of the same task replaces the old one in the shade. Removing it first makes it a new
+        // notification, so it rings and pops up again instead of being updated in place without a sound.
+        try { nm.cancel(id); } catch (Exception ignored) {}
+        try { nm.notify(id, b.build()); } catch (Exception ignored) {}
     }
 
     static int callNotifId(String call) { return 3000 + (call.hashCode() & 0xffff); }
@@ -118,7 +186,7 @@ final class Inbox {
     static void showCall(Context c, JSONObject p) {
         String call = p.optString("call");
         int id = callNotifId(call);
-        Notification.Builder b = new Notification.Builder(c, CHANNEL_CALL)
+        Notification.Builder b = new Notification.Builder(c, callChannel(c))
                 .setSmallIcon(R.drawable.ic_stat)
                 .setContentTitle(p.optString("title", "📣 Rodzic cię woła"))
                 .setContentText(p.optString("body"))
