@@ -78,7 +78,12 @@ public class ReminderRing extends Service {
         wake = getSystemService(PowerManager.class).newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "budzik:przypomnienie");
         wake.acquire(RING_MS + 5_000);
         AudioManager am = getSystemService(AudioManager.class);
-        try {
+        ParentSound.stop(this);
+        if (ParentSound.on(this)) {
+            // The parent chose the volume (ParentSound): exactly that, also when the child turned the alarm volume up or down
+            ParentSound.exceptDnd(this);
+            oldVolume = ParentSound.setVolume(this, ParentSound.volume(this));
+        } else try {
             int max = am.getStreamMaxVolume(AudioManager.STREAM_ALARM), now = am.getStreamVolume(AudioManager.STREAM_ALARM);
             int want = Math.round(max * MIN_VOLUME);
             if (now < want) { oldVolume = now; am.setStreamVolume(AudioManager.STREAM_ALARM, want, 0); }
@@ -100,9 +105,10 @@ public class ReminderRing extends Service {
         try { vibrator.vibrate(VibrationEffect.createWaveform(new long[]{0, 700, 300, 700, 300, 700, 1500}, 0), alarm); } catch (Exception ignored) {}
     }
 
-    /** The sound chosen for the alarm clock in the app, else the phone's alarm sound. */
+    /** The parent's sound (ParentSound), else the sound chosen for the alarm clock in the app, else the phone's alarm sound. */
     private Uri sound() {
-        Uri u = Alarms.sound(this);
+        Uri u = ParentSound.uri(this);
+        if (u == null) u = Alarms.sound(this);
         if (u == null) u = RingtoneManager.getActualDefaultRingtoneUri(this, RingtoneManager.TYPE_ALARM);
         if (u == null) u = Settings.System.DEFAULT_ALARM_ALERT_URI;
         if (u == null) u = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION);

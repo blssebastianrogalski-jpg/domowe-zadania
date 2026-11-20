@@ -87,6 +87,15 @@ public class SetupActivity extends Activity {
         long seen = Alarms.prefs(this).getLong("inbox_seen", 0);
         if (seen > 0) box.addView(Ui.text(this, "Ostatnie sprawdzenie przypomnień: " + time(seen) + ".", 14, Ui.MUTED, false));
 
+        box.addView(Ui.text(this, "🔊 Dźwięk powiadomień", 22, Ui.INK, true));
+        if (ParentSound.on(this)) {
+            // Read only here: the parent changes it in the web app (panel rodzica), the child has no switch for it
+            box.addView(Ui.text(this, "Ustawia rodzic: " + ParentSound.name(ParentSound.sound(this)) + ", głośność " + ParentSound.volume(this) + "%.", 16, Ui.INK, false));
+            box.addView(Ui.text(this, "Aplikacja gra ten dźwięk sama, jak budzik, także przy wyciszonym telefonie.", 14, Ui.MUTED, false));
+        } else {
+            box.addView(Ui.text(this, "Decyduje telefon (dźwięk powiadomień w ustawieniach systemu). Rodzic może go ustawić w panelu rodzica.", 15, Ui.MUTED, false));
+        }
+
         box.addView(Ui.text(this, "⏰ Budzik", 22, Ui.INK, true));
         String name = feed == null ? "" : feed.optString("name", "");
         box.addView(Ui.text(this, feed == null ? "Pobieram budziki…" : "Budziki: " + name, 18, Ui.INK, true));
@@ -199,6 +208,10 @@ public class SetupActivity extends Activity {
                 "Wyłącz optymalizację baterii, żeby telefon nie usypiał aplikacji.", "Wyłącz optymalizację",
                 new Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:" + getPackageName())));
 
+        if (ParentSound.on(this))
+            check(nm.isNotificationPolicyAccessGranted(), "Wyjątek od „Nie przeszkadzać”: włączony",
+                    "Rodzic: włącz tej aplikacji „Dostęp do Nie przeszkadzać”. Gdy dziecko włączy całkowitą ciszę, aplikacja przełączy ją na „Tylko alarmy” i dźwięk od rodzica zagra.",
+                    "Otwórz dostęp do Nie przeszkadzać", Phone.dndAccess());
         if (Phone.isXiaomi()) {
             box.addView(Ui.text(this, "Xiaomi (MIUI / HyperOS)", 20, Ui.INK, true));
             box.addView(Ui.text(this, "Xiaomi ma własne blokady. Telefon nie mówi aplikacji, czy są włączone, więc po każdym kroku zaznacz „Zrobione”. Nazwy mogą się trochę różnić zależnie od wersji systemu.", 15, Ui.MUTED, false));
