@@ -1,15 +1,15 @@
 # Dźwięki powiadomień (wybiera je rodzic)
 
-Te same pliki są w aplikacji Android (`android/app/src/main/res/raw/dz_*.wav`) i tutaj, żeby rodzic mógł ich
-posłuchać w panelu przed wyborem. Wszystkie zostały wygenerowane w tym repozytorium, nic nie jest pobrane z internetu.
+Te same pliki są w aplikacji Android (`android/app/src/main/res/raw/dz_*.mp3`) i tutaj, żeby rodzic mógł ich
+posłuchać w panelu przed wyborem.
+
+Wszystkie wygenerowane 20.11.2026 w ElevenLabs na koncie właściciela projektu, potem wyrównana głośność (ffmpeg loudnorm, −14 LUFS, mono 128 kb/s).
 
 | Plik | Co to jest | Jak powstał |
 |---|---|---|
-| `glos_wykonaj.wav` | krótki dzwonek + głos „Wykonaj zadanie!” | `generuj_glos.py`: syntezator mowy eSpeak NG 1.51 (głos `pl`), obróbka ffmpeg, dzwonek z sinusów |
-| `glos_czas.wav` | krótki dzwonek + głos „Hej! Czas na zadanie!” | jak wyżej |
-| `dzwonek.wav`, `gong.wav`, `budzik.wav`, `melodia.wav`, `syrena.wav` | proste sygnały | `generuj.py`: czyste sinusy liczone w Pythonie |
+| `glos_wykonaj.mp3` | „Hej! Wykonaj zadanie!” | ElevenLabs text-to-speech, model eleven_v4, głos „Lilly – Warm & Friendly Storyteller” (biblioteka głosów) |
+| `glos_czas.mp3` | „Hej! Czas na zadanie!” | ElevenLabs text-to-speech, model eleven_v4, głos „Patryk – Friendly, Warm & Persuasive” (biblioteka głosów) |
+| `dzwonek.mp3`, `gong.mp3`, `budzik.mp3`, `melodia.mp3`, `syrena.mp3` | sygnały | ElevenLabs sound effects, model eleven_text_to_sound_v3, z opisu słownego |
 
-Licencja: dźwięki są wygenerowane od zera skryptami z tego repozytorium. eSpeak NG jest na licencji GPL-3.0; licencja
-dotyczy programu, a nie dźwięku, który on wytwarza (tak rozumiemy GPL, to nie jest porada prawna). Głos eSpeak NG
-brzmi syntetycznie („robotycznie”); żeby zmienić tekst albo głos, edytuj `generuj_glos.py` i uruchom go ponownie
-(wymaga `espeak-ng` i `ffmpeg`).
+Licencja: warunki korzystania z wygenerowanych plików określa regulamin ElevenLabs i plan konta, na którym powstały
+(użycie komercyjne zależy od planu). Przed użyciem poza domem warto to sprawdzić w ustawieniach konta ElevenLabs.

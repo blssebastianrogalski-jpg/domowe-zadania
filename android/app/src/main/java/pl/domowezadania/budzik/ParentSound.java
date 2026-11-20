@@ -24,7 +24,7 @@ final class ParentSound {
     private ParentSound() {}
 
     static final String[] KEYS = {"glos_wykonaj", "glos_czas", "dzwonek", "gong", "budzik", "melodia", "syrena", "telefon"};
-    static final String[] NAMES = {"Głos: „Wykonaj zadanie!”", "Głos: „Hej! Czas na zadanie!”", "Dzwonek", "Gong", "Budzik (szybkie piski)", "Melodyjka", "Syrena", "Dźwięk alarmu telefonu"};
+    static final String[] NAMES = {"Głos pani: „Hej! Wykonaj zadanie!”", "Głos pana: „Hej! Czas na zadanie!”", "Dzwonek do drzwi", "Gong", "Budzik z dzwonkami", "Wesoła melodyjka", "Wesoła syrena", "Dźwięk alarmu telefonu"};
 
     private static MediaPlayer player;
     private static int oldVolume = -1;
