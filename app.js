@@ -433,9 +433,9 @@ function renderRodzic() {
 
 // ---------- dźwięk powiadomień dziecka (migration 014): the parent picks it, the Android app plays it itself ----------
 const SOUNDS = [
-  ["glos_wykonaj", "🗣 Głos: „Wykonaj zadanie!”"], ["glos_czas", "🗣 Głos: „Hej! Czas na zadanie!”"],
-  ["dzwonek", "🔔 Dzwonek"], ["gong", "🥁 Gong"], ["budzik", "⏰ Budzik (szybkie piski)"], ["melodia", "🎵 Melodyjka"],
-  ["syrena", "🚨 Syrena"], ["telefon", "📱 Dźwięk alarmu telefonu"],
+  ["glos_wykonaj", "🗣 Głos pani: „Hej! Wykonaj zadanie!”"], ["glos_czas", "🗣 Głos pana: „Hej! Czas na zadanie!”"],
+  ["dzwonek", "🔔 Dzwonek do drzwi"], ["gong", "🥁 Gong"], ["budzik", "⏰ Budzik z dzwonkami"], ["melodia", "🎵 Wesoła melodyjka"],
+  ["syrena", "🚨 Wesoła syrena"], ["telefon", "📱 Dźwięk alarmu telefonu"],
 ];
 const soundName = (k) => (SOUNDS.find((x) => x[0] === k) || [k, k])[1];
 const soundDraft = {}; // unsaved choices survive the minute refresh
@@ -443,7 +443,7 @@ let previewAudio = null;
 function preview(key, vol) {
   if (key === "telefon") { toast("Tego dźwięku nie da się tu odtworzyć: to dźwięk alarmu ustawiony w telefonie dziecka. Użyj „Zagraj na telefonie”."); return; }
   try { previewAudio?.pause(); } catch {}
-  previewAudio = new Audio("sounds/" + key + ".wav");
+  previewAudio = new Audio("sounds/" + key + ".mp3");
   previewAudio.volume = Math.max(0.1, Math.min(1, vol / 100));
   previewAudio.play().catch(() => toast("Przeglądarka nie odtworzyła dźwięku."));
 }
