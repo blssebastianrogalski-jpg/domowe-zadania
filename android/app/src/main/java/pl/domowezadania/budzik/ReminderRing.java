@@ -1,148 +1,129 @@
 package pl.domowezadania.budzik;
 
-import android.app.Notification;
-import android.app.Service;
 import android.content.Context;
-import android.content.Intent;
-import android.content.pm.ServiceInfo;
 import android.media.AudioAttributes;
 import android.media.AudioManager;
 import android.media.MediaPlayer;
+import android.media.RingtoneManager;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Handler;
-import android.os.IBinder;
 import android.os.Looper;
 import android.os.PowerManager;
 import android.os.VibrationEffect;
 import android.os.Vibrator;
 import android.os.VibratorManager;
 import android.provider.Settings;
-import android.media.RingtoneManager;
 
 /**
  * A task reminder that the child ignored for a while (the server marks it "loud", see dz-reminders) rings for a
- * short moment like the alarm clock: alarm sound on the alarm stream, so it plays also on a silent or vibrating
- * phone, plus vibration. It stops by itself after RING_MS, when the app is opened (a tap on the notification or
- * its buttons Zrobione / Za 15 min), or when the next loud reminder takes over. No challenge to solve: a reminder
- * is not a punishment, snoozing stays free.
+ * short moment like the alarm clock: the parent's sound (or the alarm sound) on the alarm stream, so it plays also
+ * on a silent or vibrating phone, plus vibration. It stops by itself after RING_MS, when the app is opened (a tap on
+ * the notification or its buttons Zrobione / Za 15 min), or when the next loud reminder takes over. No challenge to
+ * solve: a reminder is not a punishment, snoozing stays free.
+ *
+ * It plays inside the app's process, kept alive by WaitService. Until version 24 it was a separate foreground
+ * service: starting one from the background is refused or fails on newer Android (and on Xiaomi), and on the
+ * children's phones the app stopped right when the first loud reminder came, after which nothing sounded any more.
+ * The reminder notification itself (with the buttons) is shown by Inbox, so no extra notification is needed.
  */
-public class ReminderRing extends Service {
-    static final String EXTRA_TITLE = "title", EXTRA_BODY = "body", EXTRA_TASK = "task";
-    static final String ACTION_STOP = "pl.domowezadania.budzik.REMINDER_STOP";
-    static final int NOTIF = 9;
+final class ReminderRing {
+    private ReminderRing() {}
+
     static final long RING_MS = 20_000;
     /** The alarm stream is raised to at least this share of its maximum while ringing, then put back. */
     private static final float MIN_VOLUME = 0.6f;
 
     static volatile boolean ringing = false;
 
-    private final Handler main = new Handler(Looper.getMainLooper());
-    private MediaPlayer player;
-    private Vibrator vibrator;
-    private PowerManager.WakeLock wake;
-    private int oldVolume = -1;
+    private static final Handler main = new Handler(Looper.getMainLooper());
+    private static final Object TOKEN = new Object();
+    private static MediaPlayer player;
+    private static Vibrator vibrator;
+    private static PowerManager.WakeLock wake;
+    private static int oldVolume = -1;
+    private static long startedAt = 0;
 
-    /** Rings once for a loud reminder. Does nothing while the real alarm clock rings. True if it started. */
-    static boolean start(Context c, String title, String body, String task) {
+    /** Rings once for a loud reminder. Does nothing while the real alarm clock rings. True if a sound started. */
+    static synchronized boolean start(Context c, String title, String body, String task) {
         if (RingService.ringing) return false;
+        Context app = c.getApplicationContext();
+        stopNow(app);
+        ParentSound.stop(app);
         try {
-            c.startForegroundService(new Intent(c, ReminderRing.class)
-                    .putExtra(EXTRA_TITLE, title).putExtra(EXTRA_BODY, body).putExtra(EXTRA_TASK, task));
-            return true;
-        } catch (Exception e) { return false; }
-    }
-
-    static void stop(Context c) {
-        if (!ringing) return;
-        try { c.startService(new Intent(c, ReminderRing.class).setAction(ACTION_STOP)); } catch (Exception ignored) {}
-    }
-
-    @Override public IBinder onBind(Intent i) { return null; }
-
-    @Override public int onStartCommand(Intent i, int flags, int startId) {
-        String title = i == null ? null : i.getStringExtra(EXTRA_TITLE);
-        Notification n = notification(title == null ? "⏰ Przypomnienie" : title, i == null ? "" : i.getStringExtra(EXTRA_BODY),
-                i == null ? "" : i.getStringExtra(EXTRA_TASK));
-        if (Build.VERSION.SDK_INT >= 29) startForeground(NOTIF, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK);
-        else startForeground(NOTIF, n);
-        if (i == null || ACTION_STOP.equals(i.getAction())) { finish(); return START_NOT_STICKY; }
-        main.removeCallbacksAndMessages(null);
-        if (!ringing) ring();
-        main.postDelayed(this::finish, RING_MS);
-        return START_NOT_STICKY;
-    }
-
-    private void ring() {
-        ringing = true;
-        wake = getSystemService(PowerManager.class).newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "budzik:przypomnienie");
-        wake.acquire(RING_MS + 5_000);
-        AudioManager am = getSystemService(AudioManager.class);
-        ParentSound.stop(this);
-        if (ParentSound.on(this)) {
+            wake = app.getSystemService(PowerManager.class).newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "budzik:przypomnienie");
+            wake.acquire(RING_MS + 5_000);
+        } catch (Throwable ignored) { wake = null; }
+        AudioManager am = app.getSystemService(AudioManager.class);
+        if (ParentSound.on(app)) {
             // The parent chose the volume (ParentSound): exactly that, also when the child turned the alarm volume up or down
-            ParentSound.exceptDnd(this);
-            oldVolume = ParentSound.setVolume(this, ParentSound.volume(this));
+            ParentSound.exceptDnd(app);
+            oldVolume = ParentSound.setVolume(app, ParentSound.volume(app));
         } else try {
             int max = am.getStreamMaxVolume(AudioManager.STREAM_ALARM), now = am.getStreamVolume(AudioManager.STREAM_ALARM);
             int want = Math.round(max * MIN_VOLUME);
             if (now < want) { oldVolume = now; am.setStreamVolume(AudioManager.STREAM_ALARM, want, 0); }
-        } catch (Exception ignored) {}
+        } catch (Throwable ignored) {}
         AudioAttributes alarm = new AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_ALARM)
                 .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION).build();
-        player = new MediaPlayer();
+        MediaPlayer p = new MediaPlayer();
         try {
-            player.setAudioAttributes(alarm);
-            player.setDataSource(this, sound());
-            player.setLooping(true);
-            player.prepare();
-            player.start();
-        } catch (Exception e) {
-            try { player.release(); } catch (Exception ignored) {}
-            player = null;
+            p.setAudioAttributes(alarm);
+            p.setDataSource(app, sound(app));
+            p.setLooping(true);
+            p.prepare();
+            p.start();
+            player = p;
+        } catch (Throwable e) {
+            try { p.release(); } catch (Throwable ignored) {}
+            Diag.error(app, "ring", e);
         }
-        vibrator = Build.VERSION.SDK_INT >= 31 ? getSystemService(VibratorManager.class).getDefaultVibrator() : (Vibrator) getSystemService(Context.VIBRATOR_SERVICE);
-        try { vibrator.vibrate(VibrationEffect.createWaveform(new long[]{0, 700, 300, 700, 300, 700, 1500}, 0), alarm); } catch (Exception ignored) {}
+        try {
+            vibrator = Build.VERSION.SDK_INT >= 31 ? app.getSystemService(VibratorManager.class).getDefaultVibrator()
+                    : (Vibrator) app.getSystemService(Context.VIBRATOR_SERVICE);
+            vibrator.vibrate(VibrationEffect.createWaveform(new long[]{0, 700, 300, 700, 300, 700, 1500}, 0), alarm);
+        } catch (Throwable ignored) { vibrator = null; }
+        ringing = player != null;
+        startedAt = System.currentTimeMillis();
+        main.removeCallbacksAndMessages(TOKEN);
+        main.postAtTime(() -> stop(app), TOKEN, android.os.SystemClock.uptimeMillis() + RING_MS);
+        Diag.sound(app, (player != null ? "ring" : "ring_failed") + (ParentSound.on(app) ? " ps " + ParentSound.sound(app) : ""));
+        if (player == null) restore(app);
+        return player != null;
+    }
+
+    static synchronized void stop(Context c) {
+        main.removeCallbacksAndMessages(TOKEN);
+        stopNow(c.getApplicationContext());
+    }
+
+    private static void stopNow(Context app) {
+        if (player != null) { try { player.stop(); } catch (Throwable ignored) {} try { player.release(); } catch (Throwable ignored) {} player = null; }
+        if (vibrator != null) { try { vibrator.cancel(); } catch (Throwable ignored) {} vibrator = null; }
+        restore(app);
+        if (wake != null) { try { if (wake.isHeld()) wake.release(); } catch (Throwable ignored) {} wake = null; }
+        ringing = false;
+    }
+
+    private static void restore(Context app) {
+        if (oldVolume >= 0) {
+            try { app.getSystemService(AudioManager.class).setStreamVolume(AudioManager.STREAM_ALARM, oldVolume, 0); } catch (Throwable ignored) {}
+            oldVolume = -1;
+        }
+    }
+
+    /** True while it rings; also false when a ring outlived its time (so it never blocks the parent's sound for good). */
+    static boolean busy() {
+        return ringing && System.currentTimeMillis() - startedAt < RING_MS + 5_000;
     }
 
     /** The parent's sound (ParentSound), else the sound chosen for the alarm clock in the app, else the phone's alarm sound. */
-    private Uri sound() {
-        Uri u = ParentSound.uri(this);
-        if (u == null) u = Alarms.sound(this);
-        if (u == null) u = RingtoneManager.getActualDefaultRingtoneUri(this, RingtoneManager.TYPE_ALARM);
+    private static Uri sound(Context c) {
+        Uri u = ParentSound.uri(c);
+        if (u == null) u = Alarms.sound(c);
+        if (u == null) u = RingtoneManager.getActualDefaultRingtoneUri(c, RingtoneManager.TYPE_ALARM);
         if (u == null) u = Settings.System.DEFAULT_ALARM_ALERT_URI;
         if (u == null) u = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION);
         return u;
-    }
-
-    private void finish() {
-        ringing = false;
-        main.removeCallbacksAndMessages(null);
-        if (player != null) { try { player.stop(); } catch (Exception ignored) {} player.release(); player = null; }
-        if (vibrator != null) { try { vibrator.cancel(); } catch (Exception ignored) {} vibrator = null; }
-        if (oldVolume >= 0) { try { getSystemService(AudioManager.class).setStreamVolume(AudioManager.STREAM_ALARM, oldVolume, 0); } catch (Exception ignored) {} oldVolume = -1; }
-        if (wake != null && wake.isHeld()) wake.release();
-        // The reminder itself stays in the notification shade (Inbox shows it separately), only this one goes
-        stopForeground(STOP_FOREGROUND_REMOVE);
-        stopSelf();
-    }
-
-    @Override public void onDestroy() { if (ringing) finish(); super.onDestroy(); }
-
-    private Notification notification(String title, String body, String task) {
-        RingService.channel(this);
-        int id = 5000 + ((task == null ? "" : task).hashCode() & 0xffff);
-        Notification.Builder b = new Notification.Builder(this, RingService.CHANNEL)
-                .setSmallIcon(R.drawable.ic_stat).setContentTitle(title).setContentText(body)
-                .setStyle(new Notification.BigTextStyle().bigText(body))
-                .setCategory(Notification.CATEGORY_REMINDER).setVisibility(Notification.VISIBILITY_PUBLIC)
-                .setOngoing(true)
-                .setContentIntent(Inbox.open(this, "#moje", id));
-        if (task != null && !task.isEmpty()) {
-            b.addAction(new Notification.Action.Builder(null, "Zrobione", Inbox.open(this, "?task=" + task + "&a=done#moje", id * 4 + 1)).build());
-            b.addAction(new Notification.Action.Builder(null, "Za 15 min", Inbox.open(this, "?task=" + task + "&a=snooze15#moje", id * 4 + 2)).build());
-        }
-        if (Build.VERSION.SDK_INT >= 31) b.setForegroundServiceBehavior(Notification.FOREGROUND_SERVICE_IMMEDIATE);
-        return b.build();
     }
 }

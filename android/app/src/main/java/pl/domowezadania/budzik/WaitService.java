@@ -31,6 +31,8 @@ public class WaitService extends Service {
     static final String CHANNEL = "nasluch";
     static final int NOTIF = 8;
     private volatile boolean running = false;
+    /** For Diag: the long wait is running in this process. */
+    static volatile boolean alive = false;
     private Thread loop;
 
     /** Starts the service if the app is linked. Safe to call often; Android may refuse it from the background. */
@@ -42,6 +44,7 @@ public class WaitService extends Service {
     @Override public IBinder onBind(Intent i) { return null; }
 
     @Override public int onStartCommand(Intent i, int flags, int startId) {
+        Diag.install(this);
         Notification n = notification();
         if (Build.VERSION.SDK_INT >= 34) startForeground(NOTIF, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE);
         else startForeground(NOTIF, n);
@@ -56,6 +59,15 @@ public class WaitService extends Service {
     @Override public void onDestroy() { running = false; if (loop != null) loop.interrupt(); super.onDestroy(); }
 
     private void run() {
+        alive = true;
+        try { loop(); } catch (Throwable e) { Diag.error(this, "wait", e); }
+        alive = false;
+        running = false;
+        stopForeground(STOP_FOREGROUND_REMOVE);
+        stopSelf();
+    }
+
+    private void loop() {
         PowerManager.WakeLock wake = getSystemService(PowerManager.class).newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "budzik:komunikat");
         String since = "";
         long backoff = 2_000;
@@ -76,12 +88,11 @@ public class WaitService extends Service {
             if (r.optBoolean("changed") || first) {
                 // Something changed (or we just started): fetch the alarms; a fresh message is scheduled to ring at once
                 wake.acquire(20_000);
-                try { Alarms.fetch(this); Alarms.schedule(this); Inbox.fetch(this); } finally { if (wake.isHeld()) wake.release(); }
+                // Nothing thrown here may end the loop: then the phone would stay silent until the app is opened
+                try { Alarms.fetch(this); Alarms.schedule(this); } catch (Throwable e) { Diag.error(this, "alarms", e); }
+                try { Inbox.fetch(this); } finally { if (wake.isHeld()) wake.release(); }
             }
         }
-        running = false;
-        stopForeground(STOP_FOREGROUND_REMOVE);
-        stopSelf();
     }
 
     /** One long request: returns {"changed", "at"} or {"unlinked"}, or null on a network error. */

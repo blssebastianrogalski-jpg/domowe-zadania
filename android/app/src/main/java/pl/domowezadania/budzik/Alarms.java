@@ -90,6 +90,12 @@ final class Alarms {
 
     /** Same as rpc, but returns the raw response body (a function may return null, true or an object). */
     static String rpcRaw(Context c, String fn, JSONObject args) {
+        return rpcRaw(c, fn, args, null);
+    }
+
+    /** Like rpcRaw; serverTime[0] gets the server's clock (the Date header, in ms) or 0, so a wrong phone clock
+     *  cannot make fresh reminders look old. */
+    static String rpcRaw(Context c, String fn, JSONObject args, long[] serverTime) {
         String secret = secret(c);
         if (secret == null) return null;
         HttpURLConnection h = null;
@@ -103,6 +109,7 @@ final class Alarms {
             h.setDoOutput(true);
             try (OutputStream o = h.getOutputStream()) { o.write(args.toString().getBytes(StandardCharsets.UTF_8)); }
             if (h.getResponseCode() != 200) return null;
+            if (serverTime != null && serverTime.length > 0) serverTime[0] = h.getHeaderFieldDate("Date", 0);
             ByteArrayOutputStream b = new ByteArrayOutputStream();
             try (InputStream in = h.getInputStream()) { byte[] buf = new byte[4096]; int n; while ((n = in.read(buf)) > 0) b.write(buf, 0, n); }
             return b.toString("UTF-8").trim();

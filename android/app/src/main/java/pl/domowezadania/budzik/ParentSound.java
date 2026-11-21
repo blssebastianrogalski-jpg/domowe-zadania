@@ -86,7 +86,7 @@ final class ParentSound {
     static synchronized void play(Context c) {
         Uri u = uri(c);
         // The alarm clock or a loud reminder is already ringing: no second sound over it
-        if (u == null || RingService.ringing || ReminderRing.ringing) return;
+        if (u == null || RingService.ringing || ReminderRing.busy()) return;
         Context app = c.getApplicationContext();
         exceptDnd(app);
         stop(app);
@@ -102,9 +102,11 @@ final class ParentSound {
             player = p;
             // The phone's alarm sound can be long or looping: cut it after 6 seconds
             new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> { if (player == p) stop(app); }, 6_000);
-        } catch (Exception e) {
-            try { p.release(); } catch (Exception ignored) {}
+            Diag.sound(app, "ps " + sound(app) + " " + volume(app));
+        } catch (Throwable e) {
+            try { p.release(); } catch (Throwable ignored) {}
             restoreVolume(app, oldVolume); oldVolume = -1;
+            Diag.error(app, "play", e);
         }
     }
 

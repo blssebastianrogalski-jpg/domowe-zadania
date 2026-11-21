@@ -38,6 +38,7 @@ public class MainActivity extends Activity {
     @SuppressLint({"SetJavaScriptEnabled", "AddJavascriptInterface"})
     @Override protected void onCreate(Bundle b) {
         super.onCreate(b);
+        Diag.install(this);
         RingService.channel(this);
         Inbox.channels(this);
         web = new WebView(this);

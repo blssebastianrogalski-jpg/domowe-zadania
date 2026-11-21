@@ -466,6 +466,9 @@ function phoneNotes(m, ph) {
   }
   if (own && ps.dnd_access === false && !(ps.dnd && ps.dnd_filter === 3)) notes.push({ t: "ℹ️ Brak wyjątku od „Nie przeszkadzać” (⚙ Ustawienia telefonu w aplikacji dziecka)" });
   if (!own && ps.vol_notif === 0) notes.push({ bad: true, t: "🔈 Głośność powiadomień na zero" });
+  // Version 25+: the long wait (instant reminders) stopped, or the app hit an error lately (Diag on the phone)
+  if (quiet <= 20 && ps.wait === false) notes.push({ bad: true, t: "⏸️ Aplikacja nie czeka na przypomnienia na bieżąco (Android ją uśpił). Otwórz ją raz na telefonie dziecka." });
+  if (typeof ps.crash_s === "number" && ps.crash_s < 6 * 3600) notes.push({ bad: true, t: "⚠️ Aplikacja na telefonie zamknęła się z błędem " + Math.max(1, Math.round(ps.crash_s / 60)) + " min temu. Błąd jest zapisany do sprawdzenia." });
   if (own && (ps.ps_sound || null) !== m.notify_sound) notes.push({ t: "⏳ Telefon jeszcze nie pobrał nowego dźwięku (zwykle kilka sekund, do 5 minut)" });
   return notes;
 }
