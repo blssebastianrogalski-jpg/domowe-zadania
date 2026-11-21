@@ -2,7 +2,8 @@
 //  - snoozed tasks whose snooze time has passed,
 //  - daily first reminders (remind_at) not yet sent today (only on the task's chosen weekdays, if any),
 //  - repeats of a task reminder (and of a returned snooze) every REMIND_EVERY minutes until the child marks the task
-//    done, starts it or snoozes it again, for at most REMIND_FOR minutes. Snoozing stops the repeats without penalty,
+//    done, starts it or snoozes it again, but not past the task's deadline (due) nor past REMIND_UNTIL in the evening,
+//    and for at most REMIND_FOR minutes as a safety net. Snoozing stops the repeats without penalty,
 //  - help requests and finished tasks of children (to parents' devices),
 //  - nudges at fixed times (NUDGE_AT): one summary per child of today's unfinished tasks and homework due tomorrow,
 //  - ringing alarms (budzik): twice a minute to the child until the challenge is solved, for at most 60 minutes;
@@ -44,7 +45,9 @@ const NUDGE_AT = Array.from({ length: 12 }, (_, i) => `${String(15 + Math.floor(
 // Persistent task reminders: repeat every 5 minutes for up to 2 hours; dz_config keys remind_every / remind_for override.
 // From the REMIND_LOUD-th repeat on (15 minutes ignored) the payload says loud: the Android app then rings briefly
 // with the alarm sound, which plays also on a silent phone (ReminderRing.java); dz_config remind_loud, 0 = never.
-const REMIND_EVERY = 5, REMIND_FOR = 120, REMIND_LOUD = 3;
+// Repeats run until the task is done or snoozed, but stop at the task's deadline (due) and at REMIND_UNTIL (family
+// local time, dz_config remind_until), so a morning task does not ring all day at school or late in the evening.
+const REMIND_EVERY = 5, REMIND_FOR = 720, REMIND_LOUD = 3, REMIND_UNTIL = "21:00";
 // Android app counts as alive when it called the server within this many minutes (its sync runs every 5 minutes)
 const NATIVE_FRESH_MIN = 30;
 const nextDay = (day: string) => { const d = new Date(day + "T12:00:00Z"); d.setUTCDate(d.getUTCDate() + 1); return d.toISOString().slice(0, 10); };
@@ -158,7 +161,10 @@ Deno.serve(async (req) => {
   const toMin = (t: string) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5));
   // n-th repeat if `since` minutes after the first reminder is a repeat minute, else 0. Not in a nudge minute: the
   // summary already rings then, two sounds at once help nobody.
-  const repeatNo = (since: number, hm: string) => since > 0 && since <= keepFor && since % every === 0 && !nudgeAt.includes(hm) ? since / every : 0;
+  const until = /^\d\d:\d\d$/.test(conf.remind_until ?? "") ? conf.remind_until : REMIND_UNTIL;
+  // Last minute of reminding for a task: its deadline if it has one, else the evening limit, whichever comes first
+  const endOf = (t: Task) => t.due && t.due.slice(0, 5) < until ? t.due.slice(0, 5) : until;
+  const repeatNo = (since: number, hm: string, t: Task) => since > 0 && since <= keepFor && since % every === 0 && hm < endOf(t) && !nudgeAt.includes(hm) ? since / every : 0;
   const dueText = (t: Task) => t.due ? `Termin przed ${t.due.slice(0, 5)}. ` : "";
 
   const now = Date.now();
@@ -173,7 +179,7 @@ Deno.serve(async (req) => {
       await supabase.from("dz_tasks").update({ snooze_notified_at: new Date().toISOString() }).eq("id", t.id);
     } else if (st === "snoozed" && t.snooze_until && t.snooze_notified_at && Date.parse(t.snooze_notified_at) >= Date.parse(t.snooze_until)) {
       // The snooze came back and the child did nothing yet: keep reminding until done or snoozed again
-      const n = repeatNo(Math.floor((now - Date.parse(t.snooze_until)) / 60000), hm);
+      const n = repeatNo(Math.floor((now - Date.parse(t.snooze_until)) / 60000), hm, t);
       if (n) await push(forMember(), { title: "⏰ Nadal czeka: " + t.title, body: dueText(t) + "Zrób teraz albo odłóż jeszcze raz, bez kary.", task: t.id, kind: "snooze", repeat: n, loud: loud(n) });
     }
 
@@ -183,7 +189,7 @@ Deno.serve(async (req) => {
       await supabase.from("dz_tasks").update({ remind_notified_day: day }).eq("id", t.id);
     } else if (t.remind_at && st === "todo" && !offDay(t, dow) && t.remind_notified_day === day) {
       // First reminder went out today and the task is still waiting: repeat it every few minutes
-      const n = repeatNo(toMin(hm) - toMin(t.remind_at), hm);
+      const n = repeatNo(toMin(hm) - toMin(t.remind_at), hm, t);
       if (n) await push(forMember(), { title: "⏰ Nadal czeka: " + t.title, body: dueText(t) + "Zrób teraz albo odłóż na później, bez kary.", task: t.id, kind: "remind", repeat: n, loud: loud(n) });
     }
 
