@@ -69,57 +69,89 @@ final class Inbox {
         }
     }
 
-    /** Fetches and shows new notifications (blocking, call off the main thread). */
+    /** Fetches and shows new notifications (blocking, call off the main thread). Never throws: whatever goes wrong
+     *  is remembered (Diag) and reported with the next hello, and the hello itself always runs. */
     static void fetch(Context c) {
+        Diag.install(c);
+        try { fetchItems(c); } catch (Throwable e) { Diag.error(c, "fetch", e); }
+        try { hello(c); } catch (Throwable e) { Diag.error(c, "hello", e); }
+    }
+
+    /** Several threads may fetch at once (the long wait, the 5 minute sync, the test button): one at a time, so
+     *  the same reminder is not shown and rung twice. */
+    private static final Object FETCH = new Object();
+
+    private static void fetchItems(Context c) throws Exception {
         if (Alarms.secret(c) == null) return;
-        long after = Alarms.prefs(c).getLong("inbox_after", 0);
-        String body;
-        try { body = Alarms.rpcRaw(c, "dz_native_inbox_read", new JSONObject().put("p_after", after)); }
-        catch (Exception e) { return; }
-        if (body == null || body.equals("null")) return; // no network, migration 011 missing, or unlinked
-        try {
+        synchronized (FETCH) {
+            long after = Alarms.prefs(c).getLong("inbox_after", 0);
+            long[] server = {0};
+            String body = Alarms.rpcRaw(c, "dz_native_inbox_read", new JSONObject().put("p_after", after), server);
+            if (body == null || body.equals("null")) { // no network, migration 011 missing, or unlinked
+                Diag.error(c, "read", new java.io.IOException("no answer from dz_native_inbox_read"));
+                return;
+            }
+            // "Now" by the server's clock: a phone set to the wrong time must not throw fresh reminders away as old
+            long now = server[0] > 0 ? server[0] : System.currentTimeMillis();
             JSONObject r = new JSONObject(body);
             JSONArray items = r.optJSONArray("items");
             JSONArray shown = new JSONArray(), skipped = new JSONArray();
-            boolean loud = false, sound = false;
+            JSONObject loud = null;
+            boolean sound = false;
             for (int i = 0; items != null && i < items.length(); i++) {
                 JSONObject it = items.optJSONObject(i);
                 if (it == null) continue;
                 long at = 0;
                 try { at = OffsetDateTime.parse(it.optString("at")).toInstant().toEpochMilli(); } catch (Exception ignored) {}
-                if (at > 0 && System.currentTimeMillis() - at > STALE_MS) { skipped.put(it.optLong("id")); continue; }
+                if (at > 0 && now - at > STALE_MS) { skipped.put(it.optLong("id")); continue; }
                 JSONObject p = it.optJSONObject("p");
-                if (p == null) continue;
-                show(c, p);
+                if (p == null) { skipped.put(it.optLong("id")); continue; }
+                // One broken notification must not stop the others (or the report and the sound)
+                try { show(c, p); } catch (Throwable e) { Diag.error(c, "show " + p.optString("kind"), e); }
                 shown.put(it.optLong("id"));
                 String kind = p.optString("kind");
                 if (!"settings".equals(kind) && !"help".equals(kind)) sound = true;
-                // Several loud reminders at once ring once: the first one starts the sound
-                if (!loud && p.optBoolean("loud") && !"help".equals(p.optString("kind"))) {
-                    loud = ReminderRing.start(c, p.optString("title", "⏰ Przypomnienie"), p.optString("body"), p.optString("task"));
-                }
+                if (p.optBoolean("loud") && !"help".equals(kind)) loud = p;
             }
-            // The parent's sound, once for the whole batch (a loud reminder already rings with it)
-            if (sound && !loud && ParentSound.on(c)) ParentSound.play(c);
-            Alarms.prefs(c).edit().putLong("inbox_after", r.optLong("last", after)).putLong("inbox_seen", System.currentTimeMillis()).apply();
-            if (shown.length() > 0 || skipped.length() > 0) report(c, shown, skipped, loud);
-        } catch (Exception ignored) {}
-        hello(c);
+            Alarms.prefs(c).edit().putLong("inbox_after", r.optLong("last", after)).putLong("inbox_seen", System.currentTimeMillis()).commit();
+            Diag.fetched(c, items == null ? 0 : items.length(), shown.length(), skipped.length(), server[0] > 0 ? System.currentTimeMillis() - server[0] : 0);
+            // Report first: if anything below goes wrong, the parent still sees that the reminder reached the phone
+            if (shown.length() > 0 || skipped.length() > 0) report(c, shown, skipped, loud != null);
+            // Then the sound, once for the whole batch: a loud reminder rings (the newest one), else the parent's sound
+            boolean rang = false;
+            if (loud != null) {
+                rang = ReminderRing.start(c, loud.optString("title", "⏰ Przypomnienie"), loud.optString("body"), loud.optString("task"));
+            }
+            if (sound && !rang && ParentSound.on(c)) ParentSound.play(c);
+        }
     }
 
     /** Every few minutes (on each fetch, at most once a minute): tells the server how the phone is set (silent,
-     *  "Nie przeszkadzać", notifications off; the parent sees it in the web app) and gets the parent's sound
-     *  (migration 014). Before migration 014 it fails quietly and nothing changes. */
+     *  "Nie przeszkadzać", notifications off; the parent sees it in the web app) and what the app did lately (Diag),
+     *  and gets the parent's sound (migration 014). Before migration 014 it fails quietly and nothing changes. */
     static void hello(Context c) {
-        long last = Alarms.prefs(c).getLong("hello_at", 0);
-        if (System.currentTimeMillis() - last < 60_000) return;
+        long last = Alarms.prefs(c).getLong("hello_at", 0), now = System.currentTimeMillis();
+        // A time in the future (the phone's clock was wrong when it was saved) must not silence the hello for good
+        if (last <= now && now - last < 60_000) return;
         try {
-            JSONObject state = Phone.soundState(c).put("app", Updater.current(c));
+            JSONObject state = state(c);
             String body = Alarms.rpcRaw(c, "dz_native_hello", new JSONObject().put("p_state", state));
             if (body == null || body.equals("null") || !body.startsWith("{")) return;
-            Alarms.prefs(c).edit().putLong("hello_at", System.currentTimeMillis()).apply();
+            Alarms.prefs(c).edit().putLong("hello_at", now).apply();
             ParentSound.save(c, new JSONObject(body));
-        } catch (Exception ignored) {}
+        } catch (Throwable e) { Diag.error(c, "hello", e); }
+    }
+
+    /** The phone's settings (Phone.soundState) plus Diag. Never throws: a part that fails is left out. */
+    static JSONObject state(Context c) {
+        JSONObject o;
+        try { o = Phone.soundState(c); } catch (Throwable e) {
+            o = new JSONObject();
+            try { o.put("ps", true).put("state_err", String.valueOf(e)); } catch (Exception ignored) {}
+        }
+        try { o.put("app", Updater.current(c)); } catch (Throwable ignored) {}
+        Diag.addTo(c, o);
+        return o;
     }
 
     /** Tells the server what the phone did with the notifications and how the phone is set (migration 013), so
@@ -127,10 +159,9 @@ final class Inbox {
      *  fails quietly. */
     static void report(Context c, JSONArray shown, JSONArray skipped, boolean loud) {
         try {
-            JSONObject info = Phone.soundState(c).put("loud_started", loud).put("skipped", skipped)
-                    .put("app", Updater.current(c));
+            JSONObject info = state(c).put("loud", loud).put("skipped", skipped);
             Alarms.rpcRaw(c, "dz_native_inbox_seen", new JSONObject().put("p_ids", shown).put("p_info", info));
-        } catch (Exception ignored) {}
+        } catch (Throwable e) { Diag.error(c, "report", e); }
     }
 
     /** Opens the app (WebView) at a path of the web app, e.g. "?task=ID&a=done#moje". */
