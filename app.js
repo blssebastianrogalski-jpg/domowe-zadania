@@ -16,7 +16,8 @@ function st(t) { if (t.repeat === "daily" && t.status_day !== today()) return "t
 const LABEL = { todo: "Do zrobienia", snoozed: "Do zrobienia", doing: "W trakcie", help: "Potrzebuje pomocy", done: "Zrobione" };
 const CLS = { todo: "s-todo", snoozed: "s-todo", doing: "s-doing", help: "s-help", done: "s-done" };
 const addDays = (day, n) => { const d = new Date(day + "T12:00:00"); d.setDate(d.getDate() + n); return dayOf(d); };
-// Cards from the school dziennik carry a date: the parent sees them until that day, the child from 3 days before
+// Cards from the school dziennik carry a date: the parent sees them until that day; for the child they reach
+// "na teraz" from 3 days before, while the child's "Zadania szkolne" section lists the next 7 days
 function visible(t, forChild = false) {
   if (t.due_date && t.due_date < today()) return false;
   if (forChild && t.due_date && today() < addDays(t.due_date, -3)) return false;
@@ -224,9 +225,13 @@ function renderMoje() {
       el("span", { class: "pill " + CLS[s] }, LABEL[s]),
       s === "done" || s === "doing" ? "" : el("div", { class: "acts" }, el("button", { onclick: () => act(t, "doing") }, "Robię teraz")));
   };
+  // The school section lists cards from the dziennik due within the next 7 days.
+  // The 3-day window (visible(t, true)) only decides what lands on "na teraz" and the icon badge.
+  const weekAhead = addDays(today(), 7);
+  const school = S.tasks.filter((t) => t.member_id === S.me.id && isSchool(t) && visible(t) && (!t.due_date || t.due_date <= weekAhead));
   const bySort = (a, b) => (st(a) === "done") - (st(b) === "done") || sortKey(a).localeCompare(sortKey(b));
   $("my-sections").replaceChildren(
-    section("moje-szkola", "📚 Zadania szkolne", mine.filter(isSchool).sort(bySort), myRow, "Brak zadań szkolnych."),
+    section("moje-szkola", "📚 Zadania szkolne", school.sort(bySort), myRow, "Brak zadań szkolnych."),
     section("moje-dom", "🏠 Zadania domowe", mine.filter((t) => !isSchool(t)).sort(bySort), myRow, "Brak obowiązków domowych."));
   document.title = due.length ? "⏰ " + due[0].title : "Domowe Zadania";
   // Number on the home-screen icon: what is still left for today
