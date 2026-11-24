@@ -179,6 +179,33 @@ try { const k = localStorage.getItem("dz-skin"); if (k && k !== "morski") { docu
       <h2>Dziennik eduVULCAN</h2>
       <div id="school" class="school"><p class="muted small">Sprawdzam połączenie…</p></div>
     </div>
+    <details class="panel sect sect-top" id="sect-test" data-sect="r-sprawdzian">
+    <summary><span class="sect-title">📝 Sprawdzian próbny</span></summary>
+    <form class="sect-body" id="test-form" autocomplete="off">
+      <p class="muted small">Pytania układa AI z tematu, który wpiszesz, albo z zapowiedzi z dziennika. Pokaż test dziecku w aplikacji albo pobierz PDF do druku: osobno arkusz ucznia i klucz odpowiedzi. Przejrzyj pytania przed wydrukiem, AI też się myli.</p>
+      <div class="grid3">
+        <label>Dla kogo<select id="q-member" required></select></label>
+        <label>Klasa<input id="q-grade" maxlength="40" placeholder="np. 5"></label>
+        <label>Na podstawie<select id="q-src"><option value="topic">Tematu, który wpiszę</option><option value="diary">Wpisu z dziennika</option></select></label>
+      </div>
+      <label id="q-diary-l" hidden>Wpis z dziennika<select id="q-diary"></select></label>
+      <p class="note" id="q-diary-note" hidden></p>
+      <div class="grid3">
+        <label>Przedmiot<input id="q-subject" maxlength="60" placeholder="np. Matematyka"></label>
+        <label>Liczba pytań<select id="q-count"><option>5</option><option selected>10</option><option>15</option><option>20</option></select></label>
+        <label>Poziom<select id="q-level"><option value="latwy">Łatwy</option><option value="sredni" selected>Średni</option><option value="trudny">Trudny</option></select></label>
+      </div>
+      <label><span id="q-topic-label">Temat lekcji</span><textarea id="q-topic" rows="2" maxlength="1500" placeholder="np. Porównywanie, dodawanie i odejmowanie ułamków"></textarea></label>
+      <fieldset class="days" id="q-types"><legend>Rodzaje pytań</legend>
+        <label class="day-chip"><input type="checkbox" value="abcd" checked><span>A, B, C, D</span></label>
+        <label class="day-chip"><input type="checkbox" value="prawda_falsz" checked><span>Prawda / fałsz</span></label>
+        <label class="day-chip"><input type="checkbox" value="luki"><span>Uzupełnij lukę</span></label>
+        <label class="day-chip"><input type="checkbox" value="otwarte" checked><span>Otwarte</span></label>
+      </fieldset>
+      <button type="submit" class="primary" id="q-go">Przygotuj sprawdzian</button>
+      <div id="q-out" class="test-out" hidden></div>
+    </form>
+    </details>
     <div class="panel">
       <h2>Ile razy przypominałeś/aś dziś ustnie?</h2>
       <div class="tally">

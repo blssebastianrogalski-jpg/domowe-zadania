@@ -46,6 +46,13 @@ Push działa na iOS 16.4+ tylko po dodaniu aplikacji do ekranu początkowego (Sa
 - Komunikaty starsze niż 30 dni usuwają się przy wysyłaniu kolejnego.
 - Migracja: `supabase/migrations/008_dz_komunikat.sql`, potem ponowne wdrożenie `dz-reminders`.
 
+## Sprawdzian próbny
+- Rodzic w widoku „Dla rodzica” → „📝 Sprawdzian próbny” wybiera dziecko, klasę (podpowiadana z dziennika), źródło: wpisany temat albo wpis z dziennika (zapowiedziany sprawdzian, kartkówka, zadanie domowe), przedmiot, liczbę pytań (od 5 do 20), poziom i rodzaje pytań (A, B, C, D, prawda/fałsz, luki, otwarte).
+- „Z dziennika” znaczy tylko to, co eduVULCAN przysłał do aplikacji: rodzaj wpisu, przedmiot, termin i opis nauczyciela. Ocen ani tematów lekcji aplikacja nie pobiera. Gdy opis nie jest tematem (np. „przynieś kalkulator”) albo go brak, generator nie zgaduje i prosi o temat.
+- Funkcja `supabase/functions/dz-sprawdzian` (wdrażana z wyłączoną weryfikacją JWT, sama sprawdza, że woła rodzic; wpis z dziennika czyta przez RLS) woła Claude API z odpowiedzią w ustalonym schemacie JSON. Klucz `ANTHROPIC_API_KEY` ten sam co dla Pomocnika.
+- Podgląd w aplikacji (z odpowiedziami do odsłonięcia) i dwa PDF-y: arkusz ucznia i klucz odpowiedzi z wyjaśnieniami. PDF robi w przeglądarce pdfmake (czcionka Roboto z polskimi znakami), ładowany z jsDelivr dopiero po stuknięciu. W aplikacji na Androida PDF trafia do Pobranych i otwiera się w przeglądarce PDF (most `DZAndroid.savePdf`, nowa wersja APK).
+- Ostatni sprawdzian zostaje na tym telefonie do usunięcia. Bez migracji SQL.
+
 ## Aplikacja na Androida
 
 Folder `android/`: cała aplikacja w WebView z natywnymi powiadomieniami (bez Chrome i Web Push, przez skrzynkę

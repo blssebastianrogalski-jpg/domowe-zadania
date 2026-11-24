@@ -429,6 +429,7 @@ function renderRodzic() {
   renderAlarms();
   renderSchool();
   renderSound();
+  renderTestForm();
 }
 
 // ---------- dźwięk powiadomień dziecka (migration 014): the parent picks it, the Android app plays it itself ----------
@@ -1019,6 +1020,142 @@ function renderSchool() {
     el("button", { class: "primary", onclick: () => schoolDo("sync", {}, "Pobrane.") }, "Pobierz teraz"),
     el("button", { class: "ghost", onclick: () => { if (confirmTwice("school-unlink", "Stuknij „Odłącz” jeszcze raz. Usunę też niezrobione karty z dziennika.")) schoolDo("unlink", {}, "Dziennik odłączony."); } }, "Odłącz dziennik")));
 }
+
+// ---------- sprawdzian próbny (dz-sprawdzian): AI questions from a topic or a dziennik entry, preview and PDF ----------
+const TEST_KEY = "dz-sprawdzian";
+let lastTest = (() => { try { return JSON.parse(localStorage.getItem(TEST_KEY) || "null"); } catch { return null; } })();
+let testBusy = false, gradeAuto = true;
+const isExam = (t) => /^(sprawdzian|kartkówka|test|praca klasowa)/i.test(t.title || "");
+const diaryOf = (mid) => S.tasks.filter((t) => t.source === "eduvulcan" && t.member_id === mid && (!t.due_date || t.due_date >= today()))
+  .sort((a, b) => (isExam(b) - isExam(a)) || (a.due_date || "").localeCompare(b.due_date || ""));
+const subjectOf = (t) => (String(t.title).split(/:\s*/)[1] || "").trim();
+function renderTestForm() {
+  const sel = $("q-member"), keep = sel.value;
+  const kids = S.members.filter((m) => m.role === "child");
+  sel.replaceChildren(...(kids.length ? kids : S.members).map((m) => el("option", { value: m.id }, m.name)));
+  if (keep && [...sel.options].some((o) => o.value === keep)) sel.value = keep;
+  // Class from the dziennik link (eduVULCAN "ClassDisplay"), only while the parent has not typed one
+  const acc = (S.school?.accounts || []).find((a) => a.member_id === sel.value);
+  if (gradeAuto) $("q-grade").value = acc?.class || "";
+  const dsel = $("q-diary"), dkeep = dsel.value, items = diaryOf(sel.value);
+  dsel.replaceChildren(...items.map((t) => el("option", { value: t.id }, (t.due_date ? dayLabel(t.due_date) + ": " : "") + t.title + (t.details ? " · " + t.details.slice(0, 50) : ""))));
+  if (!items.length) dsel.append(el("option", { value: "" }, "Brak wpisów z dziennika na najbliższe dni"));
+  if (dkeep && items.some((t) => t.id === dkeep)) dsel.value = dkeep;
+  testSrc();
+}
+function testSrc() {
+  const diary = $("q-src").value === "diary";
+  $("q-diary-l").hidden = !diary;
+  const t = diary ? S.tasks.find((x) => x.id === $("q-diary").value) : null;
+  const note = $("q-diary-note");
+  note.hidden = !diary;
+  if (diary) note.textContent = !t ? "Dla tego dziecka nie ma teraz wpisów z dziennika. Połącz dziennik niżej albo wpisz temat sam."
+    : t.details ? "Nauczyciel napisał: „" + t.details + "”. Jeśli to nie jest temat (np. prośba o przybory), dopisz temat poniżej."
+    : "Nauczyciel nie podał tematu. Wpisz go poniżej, bez tego nie przygotuję pytań.";
+  if (t && !$("q-subject").dataset.typed) $("q-subject").value = subjectOf(t);
+  $("q-topic-label").textContent = diary ? "Temat lub zakres (dopisz, jeśli wiesz)" : "Temat lekcji";
+}
+$("q-member").onchange = () => { gradeAuto = true; renderTestForm(); };
+$("q-grade").oninput = () => { gradeAuto = false; };
+$("q-subject").oninput = (e) => { e.target.dataset.typed = e.target.value ? "1" : ""; };
+$("q-src").onchange = testSrc;
+$("q-diary").onchange = () => { delete $("q-subject").dataset.typed; testSrc(); };
+$("test-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  if (testBusy) return;
+  const diary = $("q-src").value === "diary", task_id = diary ? $("q-diary").value : null;
+  const topic = $("q-topic").value.trim();
+  const types = [...$("q-types").querySelectorAll("input:checked")].map((i) => i.value);
+  if (!types.length) { toast("Zaznacz co najmniej jeden rodzaj pytań."); return; }
+  if (!topic && !task_id) { toast(diary ? "Wybierz wpis z dziennika albo wpisz temat." : "Wpisz temat lekcji."); $("q-topic").focus(); return; }
+  testBusy = true; $("q-go").disabled = true; $("q-go").textContent = "Przygotowuję… (zwykle do minuty)";
+  const body = { task_id, topic, subject: $("q-subject").value.trim(), grade: $("q-grade").value.trim(), count: Number($("q-count").value), level: $("q-level").value, types };
+  const { data, error } = await sb.functions.invoke("dz-sprawdzian", { body });
+  testBusy = false; $("q-go").disabled = false; $("q-go").textContent = "Przygotuj sprawdzian";
+  if (error) { let msg = errMsg(error); try { const j = await error.context.json(); if (j?.error) msg = j.error; } catch {} toast(msg, 7000); return; }
+  lastTest = { ...data.test, for: memberName($("q-member").value), made: today() };
+  try { localStorage.setItem(TEST_KEY, JSON.stringify(lastTest)); } catch {}
+  renderTest(true);
+});
+
+const LETTERS = ["A", "B", "C", "D"];
+const totalPts = (t) => t.questions.reduce((s, q) => s + (q.points || 1), 0);
+const answerText = (q) => q.type === "abcd" ? q.answer + ". " + (q.options[LETTERS.indexOf(q.answer.trim())] || "") : q.answer;
+function renderTest(scroll = false) {
+  const box = $("q-out");
+  box.hidden = !lastTest; box.replaceChildren();
+  if (!lastTest) return;
+  const t = lastTest, show = !!renderTest.show;
+  box.append(el("h3", {}, t.title), el("p", { class: "muted small" }, [t.for, t.subject, t.grade ? "klasa " + t.grade : null, t.questions.length + " pytań", totalPts(t) + " pkt"].filter(Boolean).join(" · ")));
+  if (t.notes) box.append(el("p", { class: "note" }, "Uwagi: " + t.notes));
+  if (!t.questions.length) return;
+  const ol = el("ol", { class: "test-q" });
+  for (const q of t.questions) {
+    const li = el("li", {}, el("p", {}, q.text, el("span", { class: "muted small" }, "  (" + (q.points || 1) + " pkt)")));
+    if (q.type === "abcd") li.append(el("ol", { class: "test-opts", type: "A" }, ...q.options.map((o) => el("li", {}, o))));
+    if (q.type === "prawda_falsz") li.append(el("p", { class: "muted small" }, "Prawda / Fałsz"));
+    if (show) li.append(el("p", { class: "test-a" }, "✓ " + answerText(q)), el("p", { class: "muted small" }, q.explanation));
+    ol.append(li);
+  }
+  box.append(
+    el("div", { class: "inline" },
+      el("button", { type: "button", class: "primary", onclick: () => testPdf(false) }, "📄 Pobierz PDF: arkusz ucznia"),
+      el("button", { type: "button", onclick: () => testPdf(true) }, "🔑 Pobierz PDF: klucz odpowiedzi")),
+    el("label", { class: "day-chip" }, el("input", { type: "checkbox", checked: show, onchange: (e) => { renderTest.show = e.target.checked; renderTest(); } }), el("span", {}, "Pokaż odpowiedzi")),
+    ol,
+    el("div", { class: "inline" }, el("button", { type: "button", class: "ghost", onclick: () => { lastTest = null; try { localStorage.removeItem(TEST_KEY); } catch {} renderTest(); } }, "Usuń ten sprawdzian")));
+  if (scroll) box.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+// pdfmake (with Roboto, which has Polish letters) loads only when a PDF is asked for
+const PDFMAKE = "https://cdn.jsdelivr.net/npm/pdfmake@0.2.20/build/";
+let pdfLoading = null;
+function loadPdfMake() {
+  const add = (src) => new Promise((ok, bad) => { const s = document.createElement("script"); s.src = src; s.onload = ok; s.onerror = () => bad(new Error("Nie mogę pobrać narzędzia do PDF. Sprawdź internet.")); document.head.append(s); });
+  return (pdfLoading ??= add(PDFMAKE + "pdfmake.min.js").then(() => add(PDFMAKE + "vfs_fonts.js")).catch((e) => { pdfLoading = null; throw e; }));
+}
+const slug = (s) => (s || "sprawdzian").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/ł/g, "l").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 40);
+function testDoc(t, key) {
+  const lines = (n) => ({ canvas: Array.from({ length: n }, (_, i) => ({ type: "line", x1: 0, y1: 22 * (i + 1), x2: 500, y2: 22 * (i + 1), lineWidth: 0.5, lineColor: "#999" })), margin: [0, 0, 0, 8] });
+  const meta = [t.subject, t.grade ? "klasa " + t.grade : null].filter(Boolean).join(" · ");
+  const content = [{ text: t.title + (key ? ": klucz odpowiedzi" : ""), style: "h1" }];
+  if (meta) content.push({ text: meta, color: "#555", margin: [0, 0, 0, 8] });
+  if (!key) content.push({ text: "Imię i nazwisko: ______________________________     Data: ____________", margin: [0, 6, 0, 10] },
+    { text: t.instructions, italics: true, margin: [0, 0, 0, 12] });
+  t.questions.forEach((q, i) => {
+    const part = []; // one question never splits across pages
+    const pts = { text: "  (" + (q.points || 1) + " pkt)", color: "#666", fontSize: 10 };
+    part.push({ text: [{ text: i + 1 + ". ", bold: true }, q.text, pts], margin: [0, 8, 0, 4] });
+    if (key) {
+      part.push({ text: [{ text: "Odpowiedź: ", bold: true }, answerText(q)], margin: [14, 0, 0, 2] });
+      if (q.explanation) part.push({ text: q.explanation, color: "#444", fontSize: 10, margin: [14, 0, 0, 4] });
+    } else if (q.type === "abcd") part.push({ ul: q.options.map((o, j) => LETTERS[j] + ".  " + o), type: "none", margin: [14, 0, 0, 4] });
+    else if (q.type === "prawda_falsz") part.push({ text: "Zakreśl:   Prawda   /   Fałsz", margin: [14, 0, 0, 4] });
+    else if (q.type === "otwarte") part.push(lines((q.points || 1) >= 2 ? 5 : 3));
+    content.push({ stack: part, unbreakable: true });
+  });
+  content.push({ text: key ? "Razem: " + totalPts(t) + " pkt" : "Punkty: ______ / " + totalPts(t), bold: true, margin: [0, 16, 0, 0] });
+  if (key && t.notes) content.push({ text: "Uwagi: " + t.notes, color: "#444", fontSize: 10, margin: [0, 10, 0, 0] });
+  return {
+    info: { title: t.title + (key ? " (klucz)" : "") }, pageSize: "A4", pageMargins: [48, 48, 48, 48], content,
+    defaultStyle: { font: "Roboto", fontSize: 12, lineHeight: 1.2 }, styles: { h1: { fontSize: 17, bold: true, margin: [0, 0, 0, 4] } },
+    footer: (p, n) => ({ text: p + " / " + n, alignment: "center", fontSize: 9, color: "#888", margin: [0, 16, 0, 0] }),
+  };
+}
+async function testPdf(key) {
+  if (!lastTest) return;
+  try { await loadPdfMake(); } catch (e) { toast(errMsg(e)); return; }
+  const name = slug("sprawdzian " + (lastTest.subject || "") + " " + (lastTest.made || today())) + (key ? "-klucz" : "-arkusz") + ".pdf";
+  const pdf = window.pdfMake.createPdf(testDoc(lastTest, key));
+  // The Android app's WebView cannot save a blob download, so it gets the file through its bridge
+  if (window.DZAndroid) {
+    if (typeof window.DZAndroid.savePdf !== "function") { toast("Ta wersja aplikacji nie zapisze PDF. Zaktualizuj ją (⚙ Ustawienia) albo otwórz Domowe Zadania w przeglądarce.", 7000); return; }
+    pdf.getBase64((b64) => window.DZAndroid.savePdf(name, b64));
+    return;
+  }
+  pdf.download(name);
+}
+renderTest();
 
 const pending = new Set();
 function confirmTwice(key, msg) { if (pending.has(key)) { pending.delete(key); return true; } pending.add(key); toast(msg); setTimeout(() => pending.delete(key), 4000); return false; }
