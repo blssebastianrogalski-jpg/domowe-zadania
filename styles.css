@@ -217,3 +217,10 @@ html.ringing,html.ringing body{overflow:hidden}
 .sound-notes{list-style:none;margin:0;padding:0;font-size:.85rem;color:var(--muted)}
 .sound-notes li{padding:2px 0}
 .sound-notes li.bad{color:var(--help);font-weight:600}
+/* Sprawdzian próbny: preview of the generated test */
+.test-out{display:flex;flex-direction:column;gap:10px;border-top:1px solid var(--line);padding-top:12px}
+.test-out .inline button{flex:1 1 200px}
+.test-q{margin:0;padding-left:22px;display:flex;flex-direction:column;gap:12px}
+.test-q > li > p{margin:0}
+.test-opts{margin:4px 0 0;padding-left:22px}
+.test-a{margin:4px 0 0;font-weight:600;color:var(--done,var(--ink))}

@@ -4,6 +4,7 @@ import android.Manifest;
 import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.content.ContentValues;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
@@ -11,6 +12,9 @@ import android.graphics.Color;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Environment;
+import android.provider.MediaStore;
+import android.util.Base64;
 import android.webkit.CookieManager;
 import android.webkit.JavascriptInterface;
 import android.webkit.WebChromeClient;
@@ -20,6 +24,10 @@ import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.widget.Toast;
+
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.OutputStream;
 
 /**
  * The whole Domowe Zadania app, natively: the web app (GitHub Pages) in a WebView, so every feature stays the same,
@@ -197,5 +205,38 @@ public class MainActivity extends Activity {
         }
 
         @JavascriptInterface public String version() { return MainActivity.this.version(); }
+
+        /** A PDF made in the web app (sprawdzian próbny), base64. WebView cannot save blob downloads, so it lands in
+         *  Pobrane (Downloads) through MediaStore and opens in the phone's PDF viewer, from where it can be printed. */
+        @JavascriptInterface public void savePdf(String name, String base64) {
+            String file = (name == null || !name.matches("[a-z0-9-]{1,60}\\.pdf")) ? "sprawdzian.pdf" : name;
+            try {
+                byte[] bytes = Base64.decode(base64, Base64.DEFAULT);
+                Uri uri;
+                if (Build.VERSION.SDK_INT >= 29) {
+                    ContentValues v = new ContentValues();
+                    v.put(MediaStore.Downloads.DISPLAY_NAME, file);
+                    v.put(MediaStore.Downloads.MIME_TYPE, "application/pdf");
+                    uri = getContentResolver().insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, v);
+                    if (uri == null) throw new IllegalStateException("no uri");
+                    try (OutputStream o = getContentResolver().openOutputStream(uri)) { o.write(bytes); }
+                } else {
+                    // Android 8–9: the app's own folder needs no permission; the file stays there
+                    File f = new File(getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS), file);
+                    try (FileOutputStream o = new FileOutputStream(f)) { o.write(bytes); }
+                    runOnUiThread(() -> Toast.makeText(MainActivity.this, "Zapisano: " + f.getAbsolutePath(), Toast.LENGTH_LONG).show());
+                    return;
+                }
+                final Uri saved = uri;
+                runOnUiThread(() -> {
+                    Toast.makeText(MainActivity.this, "Zapisano w Pobranych: " + file, Toast.LENGTH_SHORT).show();
+                    try {
+                        startActivity(new Intent(Intent.ACTION_VIEW).setDataAndType(saved, "application/pdf").addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION));
+                    } catch (Exception e) { /* no PDF viewer: the file is in Downloads anyway */ }
+                });
+            } catch (Exception e) {
+                runOnUiThread(() -> Toast.makeText(MainActivity.this, "Nie udało się zapisać PDF.", Toast.LENGTH_LONG).show());
+            }
+        }
     }
 }
